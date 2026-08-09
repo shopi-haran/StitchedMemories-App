@@ -81,6 +81,17 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
 
   useEffect(() => {
     loadOverviewData();
+
+    const handleTierChange = () => {
+      loadOverviewData();
+    };
+    window.addEventListener('dev-tier-changed', handleTierChange);
+    window.addEventListener('tierChanged', handleTierChange);
+
+    return () => {
+      window.removeEventListener('dev-tier-changed', handleTierChange);
+      window.removeEventListener('tierChanged', handleTierChange);
+    };
   }, [loadOverviewData]);
 
   // Handle Cancel Subscription execution

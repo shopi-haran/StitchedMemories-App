@@ -75,6 +75,15 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({ user }) => {
 
   useEffect(() => {
     loadProfile();
+
+    const handleTierChange = () => {
+      loadProfile();
+    };
+    window.addEventListener('dev-tier-changed', handleTierChange);
+
+    return () => {
+      window.removeEventListener('dev-tier-changed', handleTierChange);
+    };
   }, [loadProfile]);
 
   // Handle Avatar File Upload with 400px Client-Side Resize

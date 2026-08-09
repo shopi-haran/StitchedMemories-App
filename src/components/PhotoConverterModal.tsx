@@ -14,19 +14,30 @@ import {
   renderPatternCanvas
 } from '../utils/patternEngine';
 import { exportPatternToPDF } from '../utils/pdfExporter';
-import { fetchUserProfile } from '../lib/supabase';
+import { fetchUserProfile, saveUserConversionJob } from '../lib/supabase';
+import { AuthModal } from './AuthModal';
 import dogImg from '../assets/images/hoop_dog.png';
 
 interface PhotoConverterModalProps {
   isOpen: boolean;
   onClose: () => void;
   user?: { id?: string; name: string; email: string; avatar_url?: string } | null;
+  onLoginSuccess?: (user: { id?: string; name: string; email: string; avatar_url?: string }) => void;
 }
 
-export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen, onClose, user }) => {
+export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen, onClose, user, onLoginSuccess }) => {
   // User Tier & Active Plan Tier State (Free, Pro, Studio)
   const [userTier, setUserTier] = useState<'free' | 'pro' | 'studio'>('free');
   const [planTier, setPlanTier] = useState<'free' | 'pro' | 'studio'>('free');
+
+  // Converter Login Prompt & Auth Modal State
+  const [showGuestPrompt, setShowGuestPrompt] = useState<boolean>(false);
+  const [authModalConfig, setAuthModalConfig] = useState<{
+    isOpen: boolean;
+    defaultTab: 'login' | 'signup';
+    customTitle?: string;
+    customSubtitle?: string;
+  } | null>(null);
 
   // Sync plan mode according to user's subscription_tier from Supabase profile
   useEffect(() => {
@@ -70,6 +81,22 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
     if (isOpen) {
       syncUserTier();
     }
+
+    const handleTierChange = (e: any) => {
+      if (e?.detail) {
+        const newTier = e.detail;
+        setUserTier(newTier);
+        setPlanTier(newTier);
+      } else {
+        syncUserTier();
+      }
+    };
+    window.addEventListener('dev-tier-changed', handleTierChange);
+
+    return () => {
+      active = false;
+      window.removeEventListener('dev-tier-changed', handleTierChange);
+    };
   }, [isOpen, user]);
 
   // Input Image State
@@ -138,8 +165,24 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
   const [customerEmail, setCustomerEmail] = useState<string>('');
   const [orderRef, setOrderRef] = useState<string>('');
 
+  useEffect(() => {
+    if (user) {
+      if (user.name && !customerName) setCustomerName(user.name);
+      if (user.email && !customerEmail) setCustomerEmail(user.email);
+    }
+  }, [user]);
+
   const handlePlaceOrder = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user) {
+      setAuthModalConfig({
+        isOpen: true,
+        defaultTab: 'signup',
+        customTitle: 'Create an account to complete your order',
+        customSubtitle: 'Please log in or sign up to finalize your stitching supplies order.'
+      });
+      return;
+    }
     const generatedRef = `STM-${Math.floor(100000 + Math.random() * 900000)}`;
     setOrderRef(generatedRef);
     setOrderPlaced(true);
@@ -183,7 +226,10 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
 
   // Compute Max Allowed Grid Width & Colors based on Tier
   const maxAllowedGrid = planTier === 'free' ? 100 : (planTier === 'pro' ? 300 : 400);
-  const maxAllowedColors = planTier === 'free' ? 50 : (planTier === 'pro' ? 150 : 250);
+  const maxAllowedColors = planTier === 'free' ? 20 : (planTier === 'pro' ? 150 : 250);
+
+  // Track saved conversion job to avoid redundant duplicates
+  const lastSavedPatternKeyRef = useRef<string>('');
 
   // Generate Pattern Callback
   const processPattern = async () => {
@@ -207,6 +253,24 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
 
       const result = await generatePatternFromImage(selectedPhotoUrl, config, customPalette);
       setPattern(result);
+
+      // Save conversion job to database ONLY for logged-in users (guest users skip DB saving)
+      if (user && (user.id || user.email)) {
+        const userIdToSave = user.id || user.email;
+        const patternKey = `${userIdToSave}_${customPhotoName}_${result.widthStitches}x${result.heightStitches}_${result.flossList.length}`;
+        if (lastSavedPatternKeyRef.current !== patternKey) {
+          lastSavedPatternKeyRef.current = patternKey;
+          saveUserConversionJob({
+            user_id: userIdToSave,
+            title: customPhotoName || 'Converted Pattern',
+            status: 'complete',
+            grid_width: result.widthStitches,
+            grid_height: result.heightStitches,
+            colors_count: result.flossList.length,
+            photo_url: selectedPhotoUrl.startsWith('data:') ? '' : selectedPhotoUrl,
+          });
+        }
+      }
     } catch (err) {
       console.error('Pattern processing error:', err);
     } finally {
@@ -270,6 +334,15 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
       return;
     }
     
+    if (!user) {
+      try {
+        const choice = localStorage.getItem('converterGuestChoice');
+        if (!choice) {
+          setShowGuestPrompt(true);
+        }
+      } catch {}
+    }
+
     const reader = new FileReader();
     reader.onload = (event) => {
       const base64DataUrl = event.target?.result as string;
@@ -584,8 +657,8 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
                 <div className="flex justify-between text-xs font-semibold text-[#1D231E] mb-1.5">
                   <span className="flex items-center gap-1">
                     <span>Thread Color Limit</span>
-                    {planTier === 'free' && colorLimit >= 50 && (
-                      <span className="text-[9px] bg-[#E06C38]/10 text-[#E06C38] px-1.5 py-0.5 rounded font-bold">Free Max (50)</span>
+                    {planTier === 'free' && colorLimit >= 20 && (
+                      <span className="text-[9px] bg-[#E06C38]/10 text-[#E06C38] px-1.5 py-0.5 rounded font-bold">Free Max (20)</span>
                     )}
                     {planTier === 'pro' && colorLimit >= 150 && (
                       <span className="text-[9px] bg-[#E06C38]/10 text-[#E06C38] px-1.5 py-0.5 rounded font-bold">Pro Max (150)</span>
@@ -607,7 +680,7 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
                 />
                 <span className="text-[10px] text-[#7A8877] block mt-1">
                   CIEDE2000 algorithm reduces photo down to exact {colorLimit} closest {brand} skein shades.
-                  {planTier === 'free' && ' (Free plan capped at 50 colors)'}
+                  {planTier === 'free' && ' (Free plan capped at 20 colors)'}
                   {planTier === 'pro' && ' (Pro plan supports up to 150 colors)'}
                   {planTier === 'studio' && ' (Studio plan supports unlimited colors)'}
                 </span>
@@ -1275,6 +1348,102 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
             )}
           </div>
         </div>
+      )}
+
+      {/* Converter First Upload Guest Login Choice Modal */}
+      {showGuestPrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
+          <div className="bg-[#FAF6EE] border border-[#E8E1D2] rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl relative text-center">
+            <button
+              onClick={() => {
+                try {
+                  localStorage.setItem('converterGuestChoice', 'guest');
+                } catch {}
+                setShowGuestPrompt(false);
+              }}
+              className="absolute top-4 right-4 p-2 text-[#6B7869] hover:text-[#1D231E] rounded-full hover:bg-[#E8E1D2]/50 transition-colors cursor-pointer"
+              aria-label="Close"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="w-12 h-12 rounded-2xl bg-[#E06C38]/10 text-[#E06C38] flex items-center justify-center mx-auto mb-3">
+              <Sparkles className="w-6 h-6" />
+            </div>
+
+            <h3 className="text-xl font-bold text-[#1D231E] mb-2">
+              Welcome to Stitchly Pattern Studio
+            </h3>
+            <p className="text-xs text-[#5A6659] mb-6 leading-relaxed">
+              Log in or sign up to save your pattern conversions to your account and access them from any device, or continue as a guest.
+            </p>
+
+            <div className="space-y-2.5">
+              <button
+                onClick={() => {
+                  try {
+                    localStorage.setItem('converterGuestChoice', 'login');
+                  } catch {}
+                  setShowGuestPrompt(false);
+                  setAuthModalConfig({
+                    isOpen: true,
+                    defaultTab: 'login',
+                    customTitle: 'Log In to Stitchly',
+                    customSubtitle: 'Access your saved cross-stitch patterns across devices.'
+                  });
+                }}
+                className="w-full py-3 bg-[#E06C38] hover:bg-[#d05c28] text-white text-xs font-bold rounded-xl transition-all shadow-sm cursor-pointer"
+              >
+                Log in
+              </button>
+
+              <button
+                onClick={() => {
+                  try {
+                    localStorage.setItem('converterGuestChoice', 'signup');
+                  } catch {}
+                  setShowGuestPrompt(false);
+                  setAuthModalConfig({
+                    isOpen: true,
+                    defaultTab: 'signup',
+                    customTitle: 'Create a Free Account',
+                    customSubtitle: 'Save your custom patterns to your personal account.'
+                  });
+                }}
+                className="w-full py-3 bg-white hover:bg-[#FAF6EE] border border-[#D5CDBC] text-[#1D231E] text-xs font-bold rounded-xl transition-all shadow-2xs cursor-pointer"
+              >
+                Sign up
+              </button>
+
+              <button
+                onClick={() => {
+                  try {
+                    localStorage.setItem('converterGuestChoice', 'guest');
+                  } catch {}
+                  setShowGuestPrompt(false);
+                }}
+                className="w-full py-2.5 text-xs font-semibold text-[#6B7869] hover:text-[#1D231E] transition-colors cursor-pointer"
+              >
+                Continue as guest
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Auth Modal Triggered from Converter / Order Flow */}
+      {authModalConfig?.isOpen && (
+        <AuthModal
+          isOpen={true}
+          onClose={() => setAuthModalConfig(null)}
+          defaultTab={authModalConfig.defaultTab}
+          customTitle={authModalConfig.customTitle}
+          customSubtitle={authModalConfig.customSubtitle}
+          onLoginSuccess={(u) => {
+            if (onLoginSuccess) onLoginSuccess(u);
+            setAuthModalConfig(null);
+          }}
+        />
       )}
     </div>
   );

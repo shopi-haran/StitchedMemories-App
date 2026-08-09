@@ -19,6 +19,8 @@ import { MyPatternsTab } from '../components/dashboard/MyPatternsTab';
 import { PurchasesTab } from '../components/dashboard/PurchasesTab';
 import { CustomOrdersTab } from '../components/dashboard/CustomOrdersTab';
 import { ProfileTab } from '../components/dashboard/ProfileTab';
+import { DevTierSwitcher } from '../components/dashboard/DevTierSwitcher';
+import { fetchUserProfile } from '../lib/supabase';
 
 interface UserProfile {
   id?: string;
@@ -46,12 +48,49 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   initialTab = 'overview',
 }) => {
   const [activeTab, setActiveTab] = useState<DashboardTab>(initialTab);
+  const [currentTierLabel, setCurrentTierLabel] = useState<string>('Free Crafter');
 
   useEffect(() => {
     if (initialTab) {
       setActiveTab(initialTab);
     }
   }, [initialTab]);
+
+  useEffect(() => {
+    let active = true;
+    async function syncTier() {
+      if (user?.email) {
+        const prof = await fetchUserProfile(user.id, user.email);
+        if (active && prof?.subscription_tier) {
+          const raw = prof.subscription_tier.toLowerCase();
+          if (raw.includes('studio')) setCurrentTierLabel('Studio Plan');
+          else if (raw.includes('pro')) setCurrentTierLabel('Pro Crafter');
+          else setCurrentTierLabel('Free Crafter');
+        }
+      }
+    }
+    syncTier();
+
+    const handleTierChange = (e: any) => {
+      const newTier = e?.detail?.tier;
+      if (newTier) {
+        if (newTier === 'studio') setCurrentTierLabel('Studio Plan');
+        else if (newTier === 'pro') setCurrentTierLabel('Pro Crafter');
+        else setCurrentTierLabel('Free Crafter');
+      } else {
+        syncTier();
+      }
+    };
+
+    window.addEventListener('tierChanged', handleTierChange);
+    window.addEventListener('dev-tier-changed', handleTierChange);
+
+    return () => {
+      active = false;
+      window.removeEventListener('tierChanged', handleTierChange);
+      window.removeEventListener('dev-tier-changed', handleTierChange);
+    };
+  }, [user]);
 
   const navItems: { id: DashboardTab; label: string; icon: React.FC<{ className?: string }> }[] = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
@@ -97,7 +136,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <DevTierSwitcher user={user} />
             <button
               onClick={onOpenConverter}
               className="px-4 py-2 bg-[#E06C38] hover:bg-[#d05c28] text-white text-xs font-bold rounded-full transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
@@ -131,7 +171,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               <div className="overflow-hidden">
                 <p className="text-xs font-bold text-[#1D231E] truncate">{user.name}</p>
                 <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-[#556653] bg-[#E8EFE5] px-2 py-0.5 rounded-full">
-                  <ShieldCheck className="w-3 h-3 text-[#556653]" /> Free Crafter Account
+                  <ShieldCheck className="w-3 h-3 text-[#556653]" /> {currentTierLabel}
                 </span>
               </div>
             </div>

@@ -6,6 +6,8 @@ interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   defaultTab?: 'login' | 'signup';
+  customTitle?: string;
+  customSubtitle?: string;
   onLoginSuccess: (user: { id?: string; name: string; email: string; avatar_url?: string }) => void;
 }
 
@@ -13,6 +15,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   isOpen,
   onClose,
   defaultTab = 'login',
+  customTitle,
+  customSubtitle,
   onLoginSuccess,
 }) => {
   const [tab, setTab] = useState<'login' | 'signup'>(defaultTab);
@@ -150,13 +154,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-[#E06C38]/10 text-[#E06C38] mb-3">
             <Sparkles className="w-6 h-6" />
           </div>
-          <h2 className="text-2xl font-bold text-[#1D231E]">
-            {tab === 'login' ? 'Welcome Back!' : 'Create an Account'}
+          <h2 className="text-xl sm:text-2xl font-bold text-[#1D231E]">
+            {customTitle || (tab === 'login' ? 'Welcome Back!' : 'Create an Account')}
           </h2>
           <p className="text-xs text-[#5B675A] mt-1">
-            {tab === 'login'
+            {customSubtitle || (tab === 'login'
               ? 'Sign in to access your saved cross-stitch patterns & order history.'
-              : 'Join StitchedMemories to convert photos and save custom patterns.'}
+              : 'Join StitchedMemories to convert photos and save custom patterns.')}
           </p>
         </div>
 

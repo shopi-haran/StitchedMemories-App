@@ -2,11 +2,12 @@ import React, { useState } from 'react';
 import { Check, Sparkles, Zap, Shield, Image, Percent, RefreshCw, Calculator, ArrowRight } from 'lucide-react';
 
 interface PricingSectionProps {
-  onOpenConverter: () => void;
-  onNavigateToSection: (sectionId: string) => void;
+  onOpenConverter?: () => void;
+  onNavigateToSection?: (sectionId: string) => void;
+  onSelectPlan: (plan: 'free' | 'pro' | 'studio', billingCycle: 'monthly' | 'annual') => void;
 }
 
-export const PricingSection: React.FC<PricingSectionProps> = ({ onOpenConverter }) => {
+export const PricingSection: React.FC<PricingSectionProps> = ({ onSelectPlan }) => {
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
 
   return (
@@ -118,7 +119,7 @@ export const PricingSection: React.FC<PricingSectionProps> = ({ onOpenConverter 
             </div>
 
             <button
-              onClick={onOpenConverter}
+              onClick={() => onSelectPlan('free', billingCycle)}
               className="w-full py-3.5 px-6 rounded-full bg-[#323D34] hover:bg-[#425245] border border-[#445246] text-[#FAF6EE] font-semibold text-sm transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer hover:scale-[1.02]"
             >
               <span>Get Started Free</span>
@@ -190,7 +191,7 @@ export const PricingSection: React.FC<PricingSectionProps> = ({ onOpenConverter 
             </div>
 
             <button
-              onClick={onOpenConverter}
+              onClick={() => onSelectPlan('pro', billingCycle)}
               className="w-full py-3.5 px-6 rounded-full bg-[#E06C38] hover:bg-[#d05c28] text-white font-bold text-sm transition-all duration-200 flex items-center justify-center gap-2 shadow-lg shadow-[#E06C38]/30 cursor-pointer hover:scale-[1.02]"
             >
               <span>Upgrade to Pro</span>
@@ -262,7 +263,7 @@ export const PricingSection: React.FC<PricingSectionProps> = ({ onOpenConverter 
             </div>
 
             <button
-              onClick={onOpenConverter}
+              onClick={() => onSelectPlan('studio', billingCycle)}
               className="w-full py-3.5 px-6 rounded-full bg-[#323D34] hover:bg-[#425245] border border-[#445246] text-[#FAF6EE] font-semibold text-sm transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer hover:scale-[1.02]"
             >
               <span>Start Studio Plan</span>

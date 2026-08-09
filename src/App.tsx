@@ -14,6 +14,9 @@ import { BlogPage } from './pages/BlogPage';
 import { ShopPage } from './pages/ShopPage';
 import { DashboardPage, DashboardTab } from './pages/DashboardPage';
 import { LoginPage } from './pages/LoginPage';
+import { AuthModal } from './components/AuthModal';
+import { PaymentGatewayModal } from './components/PaymentGatewayModal';
+import { DevTierSwitcher } from './components/DevTierSwitcher';
 import { supabase, fetchUserProfile } from './lib/supabase';
 
 export type PageName = 'home' | 'about-contact' | 'blog' | 'shop' | 'dashboard' | 'login';
@@ -39,6 +42,12 @@ export default function App() {
   const [dashboardTab, setDashboardTab] = useState<DashboardTab>('overview');
   const [aboutScrollTarget, setAboutScrollTarget] = useState<'about' | 'contact'>('about');
   const [isConverterOpen, setIsConverterOpen] = useState(false);
+
+  // Pricing Plan CTA state & modal controls
+  const [pricingPlan, setPricingPlan] = useState<'free' | 'pro' | 'studio' | null>(null);
+  const [pricingCycle, setPricingCycle] = useState<'monthly' | 'annual'>('monthly');
+  const [isPricingAuthModalOpen, setIsPricingAuthModalOpen] = useState(false);
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
 
   // Initialize Supabase Auth state listener
   useEffect(() => {
@@ -133,6 +142,24 @@ export default function App() {
     return () => window.removeEventListener('popstate', handleUrlSync);
   }, [user]);
 
+  const handleSelectPlanFromPricing = (plan: 'free' | 'pro' | 'studio', cycle: 'monthly' | 'annual') => {
+    setPricingPlan(plan);
+    setPricingCycle(cycle);
+
+    if (user) {
+      if (plan === 'free') {
+        setDashboardTab('overview');
+        setCurrentPage('dashboard');
+        window.history.pushState({}, '', '/dashboard');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else {
+        setIsPaymentModalOpen(true);
+      }
+    } else {
+      setIsPricingAuthModalOpen(true);
+    }
+  };
+
   const handleLoginSuccess = (userProfile: { id?: string; name: string; email: string; avatar_url?: string }) => {
     setUser(userProfile);
     try {
@@ -140,7 +167,23 @@ export default function App() {
     } catch (e) {
       console.error('Failed to save user to localStorage', e);
     }
-    // Redirect logged-in user straight to /dashboard
+
+    // Check if user clicked Pro or Studio CTA on pricing cards
+    if (pricingPlan === 'pro' || pricingPlan === 'studio') {
+      setIsPricingAuthModalOpen(false);
+      setIsPaymentModalOpen(true);
+    } else {
+      // Free plan or direct login -> redirect straight to dashboard
+      setIsPricingAuthModalOpen(false);
+      setDashboardTab('overview');
+      setCurrentPage('dashboard');
+      window.history.pushState({}, '', '/dashboard');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const handlePaymentSuccess = () => {
+    setIsPaymentModalOpen(false);
     setDashboardTab('overview');
     setCurrentPage('dashboard');
     window.history.pushState({}, '', '/dashboard');
@@ -268,6 +311,7 @@ export default function App() {
             <PricingSection
               onOpenConverter={() => setIsConverterOpen(true)}
               onNavigateToSection={handleNavigateToSection}
+              onSelectPlan={handleSelectPlanFromPricing}
             />
 
             {/* Blog & Editorial Section Preview */}
@@ -300,6 +344,8 @@ export default function App() {
           <ShopPage
             onGoHome={() => handleNavigateToSection('home')}
             onOpenConverter={() => setIsConverterOpen(true)}
+            user={user}
+            onLoginSuccess={handleLoginSuccess}
           />
         )}
 
@@ -335,7 +381,43 @@ export default function App() {
         isOpen={isConverterOpen}
         onClose={() => setIsConverterOpen(false)}
         user={user}
+        onLoginSuccess={handleLoginSuccess}
       />
+
+      {/* Auth Modal Triggered from Pricing Section CTAs */}
+      <AuthModal
+        isOpen={isPricingAuthModalOpen}
+        onClose={() => setIsPricingAuthModalOpen(false)}
+        defaultTab="signup"
+        customTitle={
+          pricingPlan === 'free'
+            ? 'Create Account for Free Plan'
+            : pricingPlan === 'pro'
+            ? 'Create Account for Pro Crafter'
+            : 'Create Account for Studio Plan'
+        }
+        customSubtitle={
+          pricingPlan === 'free'
+            ? 'Sign up to access your saved pattern vault & free daily conversions.'
+            : pricingPlan === 'pro'
+            ? 'Sign up to unlock ad-free workspace, unlimited grid sizes & watermark-free exports.'
+            : 'Sign up for live DMC/Anchor color swapper, unlimited thread palettes & commercial rights.'
+        }
+        onLoginSuccess={handleLoginSuccess}
+      />
+
+      {/* Payment Gateway Modal for Pro & Studio Plans */}
+      <PaymentGatewayModal
+        isOpen={isPaymentModalOpen}
+        onClose={() => setIsPaymentModalOpen(false)}
+        plan={pricingPlan === 'studio' ? 'studio' : 'pro'}
+        billingCycle={pricingCycle}
+        user={user}
+        onPaymentSuccess={handlePaymentSuccess}
+      />
+
+      {/* Dev-Only Tier Switcher (Only visible for shopi.haran@gmail.com) */}
+      <DevTierSwitcher user={user} />
 
       {/* Floating Back to Top Button */}
       <BackToTop />

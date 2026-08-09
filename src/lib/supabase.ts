@@ -141,6 +141,38 @@ export async function fetchUserConversionJobs(
   };
 }
 
+export async function saveUserConversionJob(jobData: {
+  user_id: string;
+  title: string;
+  status?: string;
+  grid_width?: number;
+  grid_height?: number;
+  colors_count?: number;
+  photo_url?: string;
+  [key: string]: any;
+}): Promise<boolean> {
+  if (!jobData.user_id) return false;
+
+  const { error } = await supabase.from('conversion_jobs').insert([
+    {
+      user_id: jobData.user_id,
+      title: jobData.title || 'Converted Pattern',
+      status: jobData.status || 'complete',
+      grid_width: jobData.grid_width || 100,
+      grid_height: jobData.grid_height || 100,
+      colors_count: jobData.colors_count || 18,
+      photo_url: jobData.photo_url || '',
+      created_at: new Date().toISOString(),
+    },
+  ]);
+
+  if (error) {
+    console.error('Error saving conversion job to Supabase:', error);
+    return false;
+  }
+  return true;
+}
+
 export interface OrderItem {
   name?: string;
   title?: string;
@@ -348,12 +380,26 @@ export async function fetchUserProfile(userId?: string, userEmail?: string): Pro
 
   const { data, error } = await query.maybeSingle();
 
-  if (error) {
-    console.error('Error fetching profile from Supabase:', error);
-    return null;
+  let profile = (data as SupabaseProfileRow | null) || null;
+
+  if (!profile && userEmail) {
+    profile = { email: userEmail, subscription_tier: 'free' };
   }
 
-  return data as SupabaseProfileRow;
+  if (userEmail) {
+    try {
+      const localTier = localStorage.getItem(`user_tier_${userEmail.toLowerCase()}`);
+      if (localTier && (localTier === 'free' || localTier === 'pro' || localTier === 'studio')) {
+        if (profile) {
+          profile.subscription_tier = localTier;
+        } else {
+          profile = { email: userEmail, subscription_tier: localTier };
+        }
+      }
+    } catch {}
+  }
+
+  return profile;
 }
 
 export async function updateUserProfile(
@@ -389,6 +435,60 @@ export async function updateUserProfile(
     }
     return true;
   }
+}
+
+export async function updateUserTier(
+  userId: string,
+  userEmail: string,
+  tier: 'free' | 'pro' | 'studio'
+): Promise<boolean> {
+  if (userEmail) {
+    try {
+      localStorage.setItem(`user_tier_${userEmail.toLowerCase()}`, tier);
+    } catch {}
+  }
+
+  const existing = await fetchUserProfile(userId, userEmail);
+
+  if (existing && existing.id) {
+    const { error } = await supabase
+      .from('profiles')
+      .update({ subscription_tier: tier, updated_at: new Date().toISOString() })
+      .eq('id', existing.id);
+
+    if (error) {
+      console.error('Error updating tier in Supabase:', error);
+    }
+  } else {
+    const { error } = await supabase
+      .from('profiles')
+      .upsert({
+        user_id: userId || userEmail,
+        email: userEmail,
+        subscription_tier: tier,
+        updated_at: new Date().toISOString()
+      });
+
+    if (error) {
+      console.error('Error upserting tier in Supabase:', error);
+    }
+  }
+
+  // Also sync user_profiles table if present
+  try {
+    if (userId || userEmail) {
+      await supabase.from('user_profiles').upsert([
+        {
+          id: userId || userEmail,
+          subscription_tier: tier,
+          updated_at: new Date().toISOString(),
+        }
+      ]);
+    }
+  } catch {}
+
+  window.dispatchEvent(new CustomEvent('tierChanged', { detail: { tier } }));
+  return true;
 }
 
 

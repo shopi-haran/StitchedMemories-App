@@ -2,17 +2,21 @@ import React, { useState } from 'react';
 import { SHOP_KITS } from '../data/mockData';
 import { ShopKit } from '../types';
 import { ShoppingBag, Lock, Check, Bell, Sparkles, ArrowLeft, Package, ShieldCheck, Heart, Info, ArrowRight } from 'lucide-react';
+import { AuthModal } from '../components/AuthModal';
 
 interface ShopPageProps {
   onGoHome: () => void;
   onOpenConverter: () => void;
+  user?: { id?: string; name: string; email: string; avatar_url?: string } | null;
+  onLoginSuccess?: (user: { id?: string; name: string; email: string; avatar_url?: string }) => void;
 }
 
-export const ShopPage: React.FC<ShopPageProps> = ({ onGoHome, onOpenConverter }) => {
+export const ShopPage: React.FC<ShopPageProps> = ({ onGoHome, onOpenConverter, user, onLoginSuccess }) => {
   const [selectedKit, setSelectedKit] = useState<ShopKit | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [registeredEmail, setRegisteredEmail] = useState<string>('');
   const [isNotified, setIsNotified] = useState<boolean>(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
 
   const categories = ['All', 'Full Kit', 'Curated Design', 'Notions'];
 
@@ -231,6 +235,10 @@ export const ShopPage: React.FC<ShopPageProps> = ({ onGoHome, onOpenConverter })
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
+                  if (!user) {
+                    setIsAuthModalOpen(true);
+                    return;
+                  }
                   if (registeredEmail) setIsNotified(true);
                 }}
                 className="space-y-4"
@@ -243,7 +251,7 @@ export const ShopPage: React.FC<ShopPageProps> = ({ onGoHome, onOpenConverter })
                     type="email"
                     required
                     placeholder="you@example.com"
-                    value={registeredEmail}
+                    value={registeredEmail || user?.email || ''}
                     onChange={(e) => setRegisteredEmail(e.target.value)}
                     className="w-full px-4 py-2.5 bg-white border border-[#D5CDBC] rounded-xl text-sm text-[#1D231E] focus:outline-none focus:ring-2 focus:ring-[#E06C38]/40"
                   />
@@ -266,6 +274,23 @@ export const ShopPage: React.FC<ShopPageProps> = ({ onGoHome, onOpenConverter })
 
           </div>
         </div>
+      )}
+
+      {/* Checkout Login/Signup Prompt for Guest Users */}
+      {isAuthModalOpen && (
+        <AuthModal
+          isOpen={true}
+          onClose={() => setIsAuthModalOpen(false)}
+          defaultTab="signup"
+          customTitle="Create an account to complete your order"
+          customSubtitle="Please log in or create an account to reserve your kit."
+          onLoginSuccess={(u) => {
+            if (onLoginSuccess) onLoginSuccess(u);
+            setIsAuthModalOpen(false);
+            if (u?.email && !registeredEmail) setRegisteredEmail(u.email);
+            setIsNotified(true);
+          }}
+        />
       )}
 
     </div>
