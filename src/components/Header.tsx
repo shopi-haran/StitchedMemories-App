@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { Sparkles, BookOpen, ShoppingBag, ShoppingCart, Tag, User, LogIn, UserPlus, LogOut, ChevronDown, Check, Info, MessageSquare } from 'lucide-react';
+import { Sparkles, BookOpen, ShoppingBag, ShoppingCart, Tag, User, LogIn, UserPlus, LogOut, ChevronDown, Check, Info, MessageSquare, LayoutDashboard } from 'lucide-react';
 import { AuthModal } from './AuthModal';
 import { CartDrawer } from './CartDrawer';
 
 interface UserProfile {
   name: string;
   email: string;
+  avatar_url?: string;
+  avatarUrl?: string;
 }
 
 interface HeaderProps {
@@ -157,13 +159,23 @@ export const Header: React.FC<HeaderProps> = ({
               <div className="relative">
                 <button
                   onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
-                  className="flex items-center gap-2 pl-3 pr-2.5 py-1.5 bg-white hover:bg-[#F2EFE8] border border-[#E8E1D2] rounded-full shadow-xs transition-all cursor-pointer"
+                  className="flex items-center gap-2 pl-2 pr-2.5 py-1.5 bg-white hover:bg-[#F2EFE8] border border-[#E8E1D2] rounded-full shadow-xs transition-all cursor-pointer"
                 >
-                  <div className="w-7 h-7 rounded-full bg-[#E06C38]/15 text-[#E06C38] font-bold text-xs flex items-center justify-center">
-                    {user.name.charAt(0).toUpperCase()}
+                  <div className="w-7 h-7 rounded-full bg-[#E06C38]/15 text-[#E06C38] font-bold text-xs flex items-center justify-center overflow-hidden border border-[#E8E1D2] shrink-0">
+                    {(user.avatar_url || user.avatarUrl) ? (
+                      <img
+                        src={user.avatar_url || user.avatarUrl}
+                        alt={user.name}
+                        className="w-full h-full object-cover"
+                        referrerPolicy="no-referrer"
+                        onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                      />
+                    ) : (
+                      (user.name || user.email || 'U').charAt(0).toUpperCase()
+                    )}
                   </div>
                   <span className="text-xs font-semibold text-[#1D231E] max-w-[100px] truncate hidden sm:inline">
-                    {user.name}
+                    {user.name || user.email?.split('@')[0]}
                   </span>
                   <ChevronDown className="w-3.5 h-3.5 text-[#6B7869]" />
                 </button>
@@ -174,32 +186,46 @@ export const Header: React.FC<HeaderProps> = ({
                     className="absolute right-0 mt-2 w-56 bg-white border border-[#E8E1D2] rounded-2xl shadow-xl py-2 z-50 animate-fadeIn"
                     onMouseLeave={() => setIsProfileDropdownOpen(false)}
                   >
-                    <div className="px-4 py-2.5 border-b border-[#E8E1D2]/60">
-                      <p className="text-xs font-bold text-[#1D231E] truncate">{user.name}</p>
-                      <p className="text-[11px] text-[#6B7869] truncate">{user.email}</p>
+                    <div className="px-4 py-2.5 border-b border-[#E8E1D2]/60 flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-full bg-[#E06C38]/15 text-[#E06C38] font-bold text-xs flex items-center justify-center overflow-hidden shrink-0 border border-[#E8E1D2]">
+                        {(user.avatar_url || user.avatarUrl) ? (
+                          <img
+                            src={user.avatar_url || user.avatarUrl}
+                            alt={user.name}
+                            className="w-full h-full object-cover"
+                            referrerPolicy="no-referrer"
+                          />
+                        ) : (
+                          (user.name || 'U').charAt(0).toUpperCase()
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-bold text-[#1D231E] truncate">{user.name}</p>
+                        <p className="text-[11px] text-[#6B7869] truncate">{user.email}</p>
+                      </div>
                     </div>
 
                     <div className="py-1">
                       <button
                         onClick={() => {
                           setIsProfileDropdownOpen(false);
-                          onOpenConverter();
+                          onNavigateToSection('dashboard');
                         }}
-                        className="w-full text-left px-4 py-2 text-xs text-[#3A4538] hover:bg-[#FAF6EE] flex items-center gap-2 cursor-pointer"
+                        className="w-full text-left px-4 py-2 text-xs font-bold text-[#1D231E] hover:bg-[#FAF6EE] flex items-center gap-2 cursor-pointer"
                       >
-                        <Sparkles className="w-3.5 h-3.5 text-[#E06C38]" />
-                        <span>My Saved Patterns</span>
+                        <LayoutDashboard className="w-3.5 h-3.5 text-[#E06C38]" />
+                        <span>Dashboard</span>
                       </button>
 
                       <button
                         onClick={() => {
                           setIsProfileDropdownOpen(false);
-                          setIsCartDrawerOpen(true);
+                          onNavigateToSection('profile');
                         }}
-                        className="w-full text-left px-4 py-2 text-xs text-[#3A4538] hover:bg-[#FAF6EE] flex items-center gap-2 cursor-pointer"
+                        className="w-full text-left px-4 py-2 text-xs font-medium text-[#3A4538] hover:bg-[#FAF6EE] flex items-center gap-2 cursor-pointer"
                       >
-                        <ShoppingBag className="w-3.5 h-3.5 text-[#93A28F]" />
-                        <span>Kit Reservations</span>
+                        <User className="w-3.5 h-3.5 text-[#556653]" />
+                        <span>Profile</span>
                       </button>
                     </div>
 
