@@ -97,7 +97,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onGoHome }
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.origin,
+          redirectTo: `${window.location.origin}/dashboard`,
         },
       });
 

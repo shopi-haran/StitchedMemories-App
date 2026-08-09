@@ -58,11 +58,25 @@ export default function App() {
         try {
           localStorage.setItem('stitched_memories_user', JSON.stringify(userObj));
         } catch {}
+
+        // If user is logged in and currently on /login or /signup, redirect to /dashboard
+        const path = window.location.pathname.toLowerCase();
+        if (path.startsWith('/login') || path.startsWith('/signin') || path.startsWith('/signup')) {
+          window.history.replaceState({}, '', '/dashboard');
+          setCurrentPage('dashboard');
+        }
       } else {
         setUser(null);
         try {
           localStorage.removeItem('stitched_memories_user');
         } catch {}
+
+        // If user is logged out and on /dashboard, redirect to /login
+        const path = window.location.pathname.toLowerCase();
+        if (path.startsWith('/dashboard')) {
+          window.history.replaceState({}, '', '/login');
+          setCurrentPage('login');
+        }
       }
     };
 
@@ -95,9 +109,9 @@ export default function App() {
           window.history.replaceState({}, '', '/login');
           setCurrentPage('login');
         }
-      } else if (path.startsWith('/login') || path.startsWith('/signin')) {
+      } else if (path.startsWith('/login') || path.startsWith('/signin') || path.startsWith('/signup')) {
         if (user) {
-          // If already logged in, redirect from /login to /dashboard
+          // If already logged in, redirect from /login or /signup to /dashboard
           window.history.replaceState({}, '', '/dashboard');
           setCurrentPage('dashboard');
         } else {
