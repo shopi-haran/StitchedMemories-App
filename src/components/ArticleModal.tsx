@@ -242,7 +242,7 @@ export const ArticleModal: React.FC<ArticleModalProps> = ({
                           className="w-full sm:w-auto px-6 py-3 bg-[#E06C38] hover:bg-[#c95b28] text-white text-xs font-bold rounded-full transition-all cursor-pointer shadow-md flex items-center justify-center gap-2"
                         >
                           <Sparkles className="w-4 h-4" />
-                          <span>{section.ctaText || 'Open Photo Converter'}</span>
+                          <span>{section.ctaText || 'Launch Stitchly'}</span>
                         </button>
                         {onOpenShop && (
                           <button

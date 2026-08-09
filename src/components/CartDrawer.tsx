@@ -137,7 +137,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, onOpenC
               className="w-full py-3 bg-[#E06C38] hover:bg-[#d05c28] text-white text-xs font-semibold rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
               <Sparkles className="w-4 h-4" />
-              <span>Try Photo Converter Now</span>
+              <span>Launch Stitchly</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           )}

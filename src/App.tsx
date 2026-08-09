@@ -334,6 +334,7 @@ export default function App() {
       <PhotoConverterModal
         isOpen={isConverterOpen}
         onClose={() => setIsConverterOpen(false)}
+        user={user}
       />
 
       {/* Floating Back to Top Button */}

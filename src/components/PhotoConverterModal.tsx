@@ -3,7 +3,7 @@ import {
   X, Upload, Sparkles, Sliders, Layers, Check, Download,
   RefreshCw, Lock, Shield, ArrowRight, Eye, CheckCircle2,
   Edit3, Trash2, Repeat, Ruler, Calculator, ZoomIn, Info,
-  ShoppingBag, Package, Truck, CreditCard
+  ShoppingBag, Package, Truck, CreditCard, Crown
 } from 'lucide-react';
 import { DMCItem, DMC_DATABASE } from '../utils/dmcPalette';
 import {
@@ -14,16 +14,63 @@ import {
   renderPatternCanvas
 } from '../utils/patternEngine';
 import { exportPatternToPDF } from '../utils/pdfExporter';
+import { fetchUserProfile } from '../lib/supabase';
 import dogImg from '../assets/images/hoop_dog.png';
 
 interface PhotoConverterModalProps {
   isOpen: boolean;
   onClose: () => void;
+  user?: { id?: string; name: string; email: string; avatar_url?: string } | null;
 }
 
-export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen, onClose }) => {
-  // Plan Tier State (Free, Pro, Studio)
+export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen, onClose, user }) => {
+  // User Tier & Active Plan Tier State (Free, Pro, Studio)
+  const [userTier, setUserTier] = useState<'free' | 'pro' | 'studio'>('free');
   const [planTier, setPlanTier] = useState<'free' | 'pro' | 'studio'>('free');
+
+  // Sync plan mode according to user's subscription_tier from Supabase profile
+  useEffect(() => {
+    let active = true;
+    const syncUserTier = async () => {
+      if (!user || !user.id) {
+        if (active) {
+          setUserTier('free');
+          setPlanTier('free');
+        }
+        return;
+      }
+      try {
+        const profile = await fetchUserProfile(user.id, user.email);
+        const rawTier = (profile?.subscription_tier || '').toLowerCase();
+        if (rawTier.includes('studio')) {
+          if (active) {
+            setUserTier('studio');
+            setPlanTier('studio');
+          }
+        } else if (rawTier.includes('pro')) {
+          if (active) {
+            setUserTier('pro');
+            setPlanTier('pro');
+          }
+        } else {
+          if (active) {
+            setUserTier('free');
+            setPlanTier('free');
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching user profile for converter tier:', err);
+        if (active) {
+          setUserTier('free');
+          setPlanTier('free');
+        }
+      }
+    };
+
+    if (isOpen) {
+      syncUserTier();
+    }
+  }, [isOpen, user]);
 
   // Input Image State
   const [selectedPhotoUrl, setSelectedPhotoUrl] = useState<string>('');
@@ -372,37 +419,25 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
             </div>
           </div>
 
-          {/* Plan Tier Toggle Switch */}
+          {/* Plan Tier Display according to User Subscription Tier */}
           <div className="flex items-center gap-2 bg-[#F5EFE4] p-1.5 rounded-full border border-[#DCD2C0]">
             <span className="text-[10px] font-bold text-[#70806E] uppercase px-2">Plan Mode:</span>
             
-            <button
-              onClick={() => setPlanTier('free')}
-              className={`px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer ${
-                planTier === 'free' ? 'bg-[#1D231E] text-white shadow-xs' : 'text-[#5A6659] hover:text-[#1D231E]'
-              }`}
-            >
-              Free
-            </button>
-
-            <button
-              onClick={() => setPlanTier('pro')}
-              className={`px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer ${
-                planTier === 'pro' ? 'bg-[#E06C38] text-white shadow-xs' : 'text-[#5A6659] hover:text-[#1D231E]'
-              }`}
-            >
-              Pro
-            </button>
-
-            <button
-              onClick={() => setPlanTier('studio')}
-              className={`px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
-                planTier === 'studio' ? 'bg-[#3D5239] text-white shadow-xs' : 'text-[#5A6659] hover:text-[#1D231E]'
-              }`}
-            >
-              <Sparkles className="w-3 h-3 text-[#E06C38]" />
-              <span>Studio</span>
-            </button>
+            {userTier === 'free' ? (
+              <span className="px-3.5 py-1 rounded-full text-xs font-bold bg-[#1D231E] text-white shadow-xs">
+                Free
+              </span>
+            ) : userTier === 'pro' ? (
+              <span className="px-3.5 py-1 rounded-full text-xs font-bold bg-[#E06C38] text-white shadow-xs flex items-center gap-1">
+                <Crown className="w-3.5 h-3.5" />
+                <span>Pro</span>
+              </span>
+            ) : (
+              <span className="px-3.5 py-1 rounded-full text-xs font-bold bg-[#3D5239] text-white shadow-xs flex items-center gap-1">
+                <Sparkles className="w-3.5 h-3.5 text-[#E06C38]" />
+                <span>Studio</span>
+              </span>
+            )}
 
             <button
               onClick={handleClose}
