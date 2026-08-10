@@ -397,6 +397,15 @@ export async function fetchUserProfile(userId?: string, userEmail?: string): Pro
         }
       }
     } catch {}
+  } else {
+    try {
+      const testLocalTier = localStorage.getItem(`user_tier_shopi.haran@gmail.com`);
+      if (testLocalTier && (testLocalTier === 'free' || testLocalTier === 'pro' || testLocalTier === 'studio')) {
+        if (profile) {
+          profile.subscription_tier = testLocalTier;
+        }
+      }
+    } catch {}
   }
 
   return profile;
@@ -488,6 +497,7 @@ export async function updateUserTier(
   } catch {}
 
   window.dispatchEvent(new CustomEvent('tierChanged', { detail: { tier } }));
+  window.dispatchEvent(new CustomEvent('dev-tier-changed', { detail: tier }));
   return true;
 }
 
