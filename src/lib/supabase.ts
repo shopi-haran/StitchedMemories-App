@@ -219,6 +219,7 @@ export async function saveUserConversionJob(jobData: {
   colors_count?: number;
   photo_url?: string;
   thumbnail_url?: string;
+  pattern_pdf_url?: string;
   [key: string]: any;
 }): Promise<boolean> {
   if (!jobData.user_id) return false;
@@ -285,6 +286,7 @@ export async function saveUserConversionJob(jobData: {
     colors_count: jobData.colors_count || 18,
     photo_url: finalPhoto.length < 250000 ? finalPhoto : '',
     thumbnail_url: finalThumb.length < 100000 ? finalThumb : '',
+    pattern_pdf_url: jobData.pattern_pdf_url || '',
     created_at: new Date().toISOString(),
   };
 
@@ -311,7 +313,8 @@ export async function saveUserConversionJob(jobData: {
         grid_height: jobData.grid_height || 60,
         colors_count: jobData.colors_count || 18,
         photo_url: finalPhoto.length < 250000 ? finalPhoto : '',
-        thumbnail_url: finalThumb.length < 100000 ? finalThumb : '',
+        thumbnail_url: jobData.thumbnail_url || (finalThumb.length < 100000 ? finalThumb : ''),
+        pattern_pdf_url: jobData.pattern_pdf_url || '',
         created_at: new Date().toISOString(),
       },
     ]);
@@ -512,6 +515,78 @@ export async function uploadAvatarToSupabase(file: File, userId: string): Promis
     return publicUrlData?.publicUrl || null;
   } catch (err) {
     console.error('Error in uploadAvatarToSupabase:', err);
+    return null;
+  }
+}
+
+export async function uploadPDFToSupabase(pdfBlob: Blob, fileName: string, userId: string): Promise<string | null> {
+  try {
+    const cleanUserId = (userId || 'user').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const cleanFileName = (fileName || 'pattern').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const filePath = `${cleanUserId}_${cleanFileName}_${Date.now()}.pdf`;
+
+    const { error } = await supabase.storage
+      .from('conversion-results')
+      .upload(filePath, pdfBlob, {
+        contentType: 'application/pdf',
+        upsert: true,
+      });
+
+    if (error) {
+      console.warn('Supabase storage upload error (conversion-results):', error);
+      return null;
+    }
+
+    const { data: publicUrlData } = supabase.storage
+      .from('conversion-results')
+      .getPublicUrl(filePath);
+
+    return publicUrlData?.publicUrl || null;
+  } catch (err) {
+    console.error('Error in uploadPDFToSupabase:', err);
+    return null;
+  }
+}
+
+export async function uploadThumbnailToSupabase(imageSrc: string, fileName: string, userId: string): Promise<string | null> {
+  try {
+    if (!imageSrc) return null;
+    let blob: Blob;
+    if (imageSrc.startsWith('data:')) {
+      const resp = await fetch(imageSrc);
+      blob = await resp.blob();
+    } else if (imageSrc.startsWith('blob:')) {
+      const resp = await fetch(imageSrc);
+      blob = await resp.blob();
+    } else if (imageSrc.startsWith('http')) {
+      return imageSrc;
+    } else {
+      return null;
+    }
+
+    const cleanUserId = (userId || 'user').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const cleanFileName = (fileName || 'thumb').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const filePath = `${cleanUserId}_${cleanFileName}_thumb_${Date.now()}.jpg`;
+
+    const { error } = await supabase.storage
+      .from('conversion-results')
+      .upload(filePath, blob, {
+        contentType: blob.type || 'image/jpeg',
+        upsert: true,
+      });
+
+    if (error) {
+      console.warn('Supabase storage upload error for thumbnail:', error);
+      return null;
+    }
+
+    const { data: publicUrlData } = supabase.storage
+      .from('conversion-results')
+      .getPublicUrl(filePath);
+
+    return publicUrlData?.publicUrl || null;
+  } catch (err) {
+    console.error('Error in uploadThumbnailToSupabase:', err);
     return null;
   }
 }

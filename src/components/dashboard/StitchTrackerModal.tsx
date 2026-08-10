@@ -276,6 +276,10 @@ export const StitchTrackerModal: React.FC<StitchTrackerModalProps> = ({
           <div className="flex items-center gap-2">
             <button
               onClick={async () => {
+                if (job.pattern_pdf_url) {
+                  window.open(job.pattern_pdf_url, '_blank');
+                  return;
+                }
                 if (!pattern) return;
                 try {
                   const config: PatternConfig = {

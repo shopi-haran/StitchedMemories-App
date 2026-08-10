@@ -337,14 +337,14 @@ function renderSubGridCanvas(
 }
 
 /**
- * Generate and download complete multi-page PDF for Color Pattern or Symbol Chart
+ * Build complete multi-page PDF for Color Pattern or Symbol Chart
  */
-export async function exportPatternToPDF(
+export async function buildPatternPDFDoc(
   pattern: GeneratedPattern,
   mode: 'color' | 'symbol',
   config: PatternConfig,
   patternName: string
-): Promise<void> {
+): Promise<jsPDF> {
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
@@ -681,7 +681,32 @@ export async function exportPatternToPDF(
     applyFreePlanWatermarkToPDF(doc);
   }
 
-  // Save the generated PDF
+  return doc;
+}
+
+/**
+ * Generate and download complete multi-page PDF for Color Pattern or Symbol Chart
+ */
+export async function exportPatternToPDF(
+  pattern: GeneratedPattern,
+  mode: 'color' | 'symbol',
+  config: PatternConfig,
+  patternName: string
+): Promise<void> {
+  const doc = await buildPatternPDFDoc(pattern, mode, config, patternName);
   const cleanFileName = patternName.toLowerCase().replace(/[^a-z0-9]/g, '-');
   doc.save(`${cleanFileName}-${mode}-chart.pdf`);
+}
+
+/**
+ * Generate PDF as a Blob object for cloud storage uploads
+ */
+export async function generatePatternPDFBlob(
+  pattern: GeneratedPattern,
+  mode: 'color' | 'symbol',
+  config: PatternConfig,
+  patternName: string
+): Promise<Blob> {
+  const doc = await buildPatternPDFDoc(pattern, mode, config, patternName);
+  return doc.output('blob');
 }

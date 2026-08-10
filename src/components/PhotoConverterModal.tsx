@@ -14,8 +14,8 @@ import {
   renderPatternCanvas,
   createScaledThumbnail
 } from '../utils/patternEngine';
-import { exportPatternToPDF } from '../utils/pdfExporter';
-import { fetchUserProfile, saveUserConversionJob } from '../lib/supabase';
+import { exportPatternToPDF, generatePatternPDFBlob } from '../utils/pdfExporter';
+import { fetchUserProfile, saveUserConversionJob, uploadPDFToSupabase, uploadThumbnailToSupabase } from '../lib/supabase';
 import { AuthModal } from './AuthModal';
 import { StudioImageEditorModal } from './StudioImageEditorModal';
 import dogImg from '../assets/images/hoop_dog.png';
@@ -306,6 +306,29 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
           }
         }
 
+        // Generate pattern PDF with DMC symbol chart & color key and upload to conversion-results storage bucket
+        let pdfUrl = '';
+        let uploadedThumbUrl = '';
+        try {
+          const pdfBlob = await generatePatternPDFBlob(result, 'color', config, customPhotoName || 'Converted Pattern');
+          const uploadedPdf = await uploadPDFToSupabase(pdfBlob, customPhotoName || 'Converted Pattern', userIdToSave);
+          if (uploadedPdf) {
+            pdfUrl = uploadedPdf;
+          }
+        } catch (pdfErr) {
+          console.error('Error generating or uploading pattern PDF:', pdfErr);
+        }
+
+        // Upload thumbnail to storage bucket alongside PDF
+        try {
+          const uploadedThumb = await uploadThumbnailToSupabase(compactThumb || scaledPhoto, customPhotoName || 'Converted Pattern', userIdToSave);
+          if (uploadedThumb) {
+            uploadedThumbUrl = uploadedThumb;
+          }
+        } catch (thumbErr) {
+          console.error('Error uploading thumbnail to storage:', thumbErr);
+        }
+
         saveUserConversionJob({
           user_id: userIdToSave,
           title: customPhotoName || 'Converted Pattern',
@@ -313,8 +336,9 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
           grid_width: result.widthStitches,
           grid_height: result.heightStitches,
           colors_count: result.flossList.length,
-          photo_url: scaledPhoto,
-          thumbnail_url: compactThumb,
+          photo_url: uploadedThumbUrl || scaledPhoto,
+          thumbnail_url: uploadedThumbUrl || compactThumb,
+          pattern_pdf_url: pdfUrl,
         });
       }
     } catch (err) {
