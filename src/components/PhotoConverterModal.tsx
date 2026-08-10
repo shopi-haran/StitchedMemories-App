@@ -15,7 +15,7 @@ import {
   createScaledThumbnail
 } from '../utils/patternEngine';
 import { exportPatternToPDF, generatePatternPDFBlob } from '../utils/pdfExporter';
-import { fetchUserProfile, saveUserConversionJob, uploadPDFToSupabase, uploadThumbnailToSupabase } from '../lib/supabase';
+import { fetchUserProfile, saveUserConversionJob, uploadPDFToSupabase, uploadThumbnailToSupabase, supabase } from '../lib/supabase';
 import { AuthModal } from './AuthModal';
 import { StudioImageEditorModal } from './StudioImageEditorModal';
 import dogImg from '../assets/images/hoop_dog.png';
@@ -285,12 +285,20 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
 
       console.log('[ConversionSave] Pattern generated successfully. Initiating save workflow...');
 
+      const { data: { session: activeSession } } = await supabase.auth.getSession();
+      console.log('[ConversionSave] Active Supabase Auth Session retrieved:', {
+        hasSession: !!activeSession,
+        sessionUserId: activeSession?.user?.id,
+        sessionEmail: activeSession?.user?.email,
+        hasAccessToken: !!activeSession?.access_token,
+      });
+
       // Save conversion job so it appears in "My Patterns" and Supabase conversion_jobs table
-      const userIdToSave = user?.id || user?.email || 'info.nxuswave@gmail.com';
+      const userIdToSave = activeSession?.user?.id || user?.id || user?.email || 'info.nxuswave@gmail.com';
       console.log('[ConversionSave] User login status check:', {
-        isLoggedIn: !!user,
-        userId: user?.id,
-        userEmail: user?.email,
+        isLoggedIn: !!user || !!activeSession,
+        userId: activeSession?.user?.id || user?.id,
+        userEmail: activeSession?.user?.email || user?.email,
         resolvedUserIdToSave: userIdToSave,
       });
 

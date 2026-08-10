@@ -321,8 +321,22 @@ export async function saveUserConversionJob(jobData: {
     console.error('[saveUserConversionJob] Failed to update local conversion jobs list:', e);
   }
 
+  // Retrieve current active Supabase Auth session right before insert
+  const { data: { session } } = await supabase.auth.getSession();
+  console.log('[saveUserConversionJob] Supabase Auth Session before insert:', {
+    hasSession: !!session,
+    sessionUserId: session?.user?.id,
+    sessionUserEmail: session?.user?.email,
+    payloadUserId: jobData.user_id,
+    hasAccessToken: !!session?.access_token,
+    accessTokenSnippet: session?.access_token ? `${session.access_token.substring(0, 20)}...` : null,
+  });
+
+  // Align insert user_id with session.user.id when an active session exists so RLS (auth.uid() = user_id) passes
+  const effectiveUserId = session?.user?.id || jobData.user_id;
+
   const insertPayload = {
-    user_id: jobData.user_id,
+    user_id: effectiveUserId,
     title: jobData.title || 'Converted Pattern',
     status: jobData.status || 'complete',
     grid_width: jobData.grid_width || 60,
@@ -341,7 +355,12 @@ export async function saveUserConversionJob(jobData: {
     const { data, error } = await supabase.from('conversion_jobs').insert([insertPayload]).select();
 
     if (error) {
-      console.error('[saveUserConversionJob] Supabase insert error for conversion_jobs:', error);
+      console.error('[saveUserConversionJob] Supabase insert error for conversion_jobs:', {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+      });
     } else {
       console.log('[saveUserConversionJob] Supabase insert succeeded for conversion_jobs:', data);
     }
@@ -544,11 +563,21 @@ export async function uploadAvatarToSupabase(file: File, userId: string): Promis
 
 export async function uploadPDFToSupabase(pdfBlob: Blob, fileName: string, userId: string): Promise<string | null> {
   try {
-    const cleanUserId = (userId || 'user').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const { data: { session } } = await supabase.auth.getSession();
+    console.log('[uploadPDFToSupabase] Supabase Auth Session before upload:', {
+      hasSession: !!session,
+      sessionUserId: session?.user?.id,
+      sessionUserEmail: session?.user?.email,
+      hasAccessToken: !!session?.access_token,
+      paramUserId: userId,
+    });
+
+    const effectiveUserId = session?.user?.id || userId;
+    const cleanUserId = (effectiveUserId || 'user').replace(/[^a-zA-Z0-9_-]/g, '_');
     const cleanFileName = (fileName || 'pattern').replace(/[^a-zA-Z0-9_-]/g, '_');
     const filePath = `${cleanUserId}_${cleanFileName}_${Date.now()}.pdf`;
 
-    const { error } = await supabase.storage
+    const { data, error } = await supabase.storage
       .from('conversion-results')
       .upload(filePath, pdfBlob, {
         contentType: 'application/pdf',
@@ -556,9 +585,15 @@ export async function uploadPDFToSupabase(pdfBlob: Blob, fileName: string, userI
       });
 
     if (error) {
-      console.warn('Supabase storage upload error (conversion-results):', error);
+      console.error('[uploadPDFToSupabase] Supabase storage upload error (conversion-results):', {
+        error,
+        code: (error as any).statusCode || (error as any).code,
+        message: error.message,
+      });
       return null;
     }
+
+    console.log('[uploadPDFToSupabase] Storage upload succeeded:', data);
 
     const { data: publicUrlData } = supabase.storage
       .from('conversion-results')
@@ -566,7 +601,7 @@ export async function uploadPDFToSupabase(pdfBlob: Blob, fileName: string, userI
 
     return publicUrlData?.publicUrl || null;
   } catch (err) {
-    console.error('Error in uploadPDFToSupabase:', err);
+    console.error('[uploadPDFToSupabase] Exception during PDF upload:', err);
     return null;
   }
 }
@@ -587,11 +622,21 @@ export async function uploadThumbnailToSupabase(imageSrc: string, fileName: stri
       return null;
     }
 
-    const cleanUserId = (userId || 'user').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const { data: { session } } = await supabase.auth.getSession();
+    console.log('[uploadThumbnailToSupabase] Supabase Auth Session before upload:', {
+      hasSession: !!session,
+      sessionUserId: session?.user?.id,
+      sessionUserEmail: session?.user?.email,
+      hasAccessToken: !!session?.access_token,
+      paramUserId: userId,
+    });
+
+    const effectiveUserId = session?.user?.id || userId;
+    const cleanUserId = (effectiveUserId || 'user').replace(/[^a-zA-Z0-9_-]/g, '_');
     const cleanFileName = (fileName || 'thumb').replace(/[^a-zA-Z0-9_-]/g, '_');
     const filePath = `${cleanUserId}_${cleanFileName}_thumb_${Date.now()}.jpg`;
 
-    const { error } = await supabase.storage
+    const { data, error } = await supabase.storage
       .from('conversion-results')
       .upload(filePath, blob, {
         contentType: blob.type || 'image/jpeg',
@@ -599,9 +644,15 @@ export async function uploadThumbnailToSupabase(imageSrc: string, fileName: stri
       });
 
     if (error) {
-      console.warn('Supabase storage upload error for thumbnail:', error);
+      console.error('[uploadThumbnailToSupabase] Supabase storage upload error for thumbnail:', {
+        error,
+        code: (error as any).statusCode || (error as any).code,
+        message: error.message,
+      });
       return null;
     }
+
+    console.log('[uploadThumbnailToSupabase] Storage upload succeeded:', data);
 
     const { data: publicUrlData } = supabase.storage
       .from('conversion-results')
@@ -609,7 +660,7 @@ export async function uploadThumbnailToSupabase(imageSrc: string, fileName: stri
 
     return publicUrlData?.publicUrl || null;
   } catch (err) {
-    console.error('Error in uploadThumbnailToSupabase:', err);
+    console.error('[uploadThumbnailToSupabase] Exception during thumbnail upload:', err);
     return null;
   }
 }
