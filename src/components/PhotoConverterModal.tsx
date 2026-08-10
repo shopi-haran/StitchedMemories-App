@@ -16,6 +16,7 @@ import {
 import { exportPatternToPDF } from '../utils/pdfExporter';
 import { fetchUserProfile, saveUserConversionJob } from '../lib/supabase';
 import { AuthModal } from './AuthModal';
+import { StudioImageEditorModal } from './StudioImageEditorModal';
 import dogImg from '../assets/images/hoop_dog.png';
 
 interface PhotoConverterModalProps {
@@ -125,8 +126,10 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
 
   // Input Image State
   const [selectedPhotoUrl, setSelectedPhotoUrl] = useState<string>('');
+  const [originalPhotoUrl, setOriginalPhotoUrl] = useState<string>('');
   const [customPhotoName, setCustomPhotoName] = useState<string>('');
   const [isDragging, setIsDragging] = useState<boolean>(false);
+  const [isImageEditorOpen, setIsImageEditorOpen] = useState<boolean>(false);
 
   // Pattern Parameters with Default Initial Values
   const [gridWidth, setGridWidth] = useState<number>(60);
@@ -143,7 +146,9 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
   // Reset converter state to defaults for a new conversion session
   const resetSessionState = () => {
     setSelectedPhotoUrl('');
+    setOriginalPhotoUrl('');
     setCustomPhotoName('');
+    setIsImageEditorOpen(false);
     setGridWidth(60);
     setFabricCount(14);
     setColorLimit(18);
@@ -154,7 +159,6 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
     setShowGridLines(true);
     setShowSymbolsOnColor(true);
     setBrand('DMC');
-    setCustomPalette(undefined);
     setCompletedStitches(new Set());
     setViewMode('color');
     setPattern(null);
@@ -275,7 +279,7 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
         planTier
       };
 
-      const result = await generatePatternFromImage(selectedPhotoUrl, config, customPalette);
+      const result = await generatePatternFromImage(selectedPhotoUrl, config);
       setPattern(result);
 
       // Save conversion job to database ONLY for logged-in users (guest users skip DB saving)
@@ -321,7 +325,7 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
     } else if (isOpen && !selectedPhotoUrl) {
       setPattern(null);
     }
-  }, [isOpen, selectedPhotoUrl, gridWidth, fabricCount, colorLimit, dithering, brightness, contrast, saturation, showGridLines, showSymbolsOnColor, brand, planTier, customPalette]);
+  }, [isOpen, selectedPhotoUrl, gridWidth, fabricCount, colorLimit, dithering, brightness, contrast, saturation, showGridLines, showSymbolsOnColor, brand, planTier]);
 
   // Render Pattern to Canvas whenever pattern or viewMode changes
   useEffect(() => {
@@ -373,11 +377,11 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
       if (base64DataUrl) {
         const fileName = file.name.replace(/\.[^/.]+$/, "");
         setSelectedPhotoUrl(base64DataUrl);
+        setOriginalPhotoUrl(base64DataUrl);
         setCustomPhotoName(fileName);
         setBrightness(0);
         setContrast(0);
         setSaturation(0);
-        setCustomPalette(undefined);
         setCompletedStitches(new Set());
         setDailyGenerations(prev => prev + 1);
       }
@@ -410,42 +414,6 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
     if (files && files.length > 0) {
       processImageFile(files[0]);
     }
-  };
-
-  // Studio Feature: Swap / Replace a DMC color in current pattern
-  const handleSwapColor = (sourceCode: string, newTargetCode: string) => {
-    if (planTier !== 'studio') {
-      alert('Manual DMC Color Editing is a Studio Plan feature. Switch your plan tier above to try it out!');
-      return;
-    }
-
-    const newTargetDmc = DMC_DATABASE.find(d => d.code === newTargetCode);
-    if (!newTargetDmc || !pattern) return;
-
-    // Replace in pixel map
-    const updatedMap = pattern.pixelDmcMap.map(dmc => dmc.code === sourceCode ? newTargetDmc : dmc);
-    
-    // Recalculate stats
-    const countMap = new Map<string, number>();
-    for (const dmc of updatedMap) {
-      countMap.set(dmc.code, (countMap.get(dmc.code) || 0) + 1);
-    }
-
-    const total = pattern.totalStitches;
-    const updatedFlossList = Array.from(countMap.entries()).map(([code, count]) => {
-      const dmc = DMC_DATABASE.find(d => d.code === code) || newTargetDmc;
-      const percentage = Math.round((count / total) * 1000) / 10;
-      const skeinsNeeded = Math.max(1, Math.ceil(count / 1800));
-      return { dmc, stitchCount: count, percentage, skeinsNeeded };
-    }).sort((a, b) => b.stitchCount - a.stitchCount);
-
-    setPattern({
-      ...pattern,
-      pixelDmcMap: updatedMap,
-      flossList: updatedFlossList
-    });
-
-    setEditingDmcCode(null);
   };
 
   // Download Action - Generates Multi-Page Zoomed PDF with Color Symbols and Floss Key
@@ -619,6 +587,29 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
                   </span>
                 </div>
               </div>
+
+              {/* Studio Plan Feature: Image Editor Action Button */}
+              {selectedPhotoUrl && (
+                <div className="pt-1">
+                  {planTier === 'studio' ? (
+                    <button
+                      onClick={() => setIsImageEditorOpen(true)}
+                      className="w-full py-2.5 px-4 bg-[#3D5239] hover:bg-[#2C3B29] text-white rounded-xl font-bold text-xs transition-colors flex items-center justify-center gap-2 shadow-xs cursor-pointer"
+                    >
+                      <Sliders className="w-4 h-4 text-[#E06C38]" />
+                      <span>Launch Studio Image Editor (Crop, Rotate, Scale & Adjust)</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => alert('Studio Image Editor (Crop, Rotate, Flip, Scale & Tone Filters) is exclusive to Studio Plan users. Switch plan mode to Studio above to try it out!')}
+                      className="w-full py-2.5 px-4 bg-[#F0EBE1] text-[#7A8877] rounded-xl font-bold text-xs border border-[#DCD2C0] flex items-center justify-center gap-2 cursor-pointer hover:bg-[#E8E1D2]/80 transition-colors"
+                    >
+                      <Lock className="w-3.5 h-3.5 text-[#E06C38]" />
+                      <span>Studio Image Editor (Studio Plan Exclusive)</span>
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Step 2: Algorithm Parameters */}
@@ -1110,17 +1101,6 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
                     </div>
                   )}
 
-                  {/* Studio Plan Banner for Color Editor */}
-                  {planTier === 'studio' && (
-                    <div className="mb-2 p-2.5 bg-[#E8EFE5] rounded-xl border border-[#C5D3C2] flex flex-col sm:flex-row items-start sm:items-center justify-between text-xs text-[#1D231E] gap-1">
-                      <div className="flex items-center gap-2">
-                        <Edit3 className="w-4 h-4 text-[#E06C38]" />
-                        <span className="font-bold text-[11px]">Studio Live Thread Color Editor & Swapper</span>
-                      </div>
-                      <span className="text-[10px] text-[#5A6659] font-medium">Use the dropdown on any thread below to swap its color in real-time</span>
-                    </div>
-                  )}
-
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-36 overflow-y-auto pr-1">
                     {pattern.flossList.map((item) => (
                       <div
@@ -1154,25 +1134,6 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
                           <span className="text-[10px] font-bold text-[#E06C38] bg-[#E06C38]/10 px-2 py-0.5 rounded-md border border-[#E06C38]/20">
                             {item.skeinsNeeded} {item.skeinsNeeded === 1 ? 'skein' : 'skeins'}
                           </span>
-
-                          {/* Studio Color Swapper Dropdown */}
-                          {planTier === 'studio' && (
-                            <select
-                              value={item.dmc.code}
-                              onChange={(e) => handleSwapColor(item.dmc.code, e.target.value)}
-                              className="text-[10px] font-bold bg-white text-[#1D231E] border border-[#C5D3C2] rounded-lg px-1.5 py-1 focus:outline-none focus:border-[#E06C38] cursor-pointer max-w-[100px] truncate"
-                              title="Studio Feature: Swap thread shade"
-                            >
-                              <option value={item.dmc.code} disabled>
-                                Swap...
-                              </option>
-                              {DMC_DATABASE.map((d) => (
-                                <option key={d.code} value={d.code}>
-                                  {brand === 'Anchor' ? d.anchorCode : d.code} ({d.name})
-                                </option>
-                              ))}
-                            </select>
-                          )}
                         </div>
                       </div>
                     ))}
@@ -1453,6 +1414,19 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
             </div>
           </div>
         </div>
+      )}
+
+      {/* Studio Image Editor Modal */}
+      {isImageEditorOpen && (
+        <StudioImageEditorModal
+          isOpen={isImageEditorOpen}
+          onClose={() => setIsImageEditorOpen(false)}
+          imageUrl={selectedPhotoUrl}
+          originalImageUrl={originalPhotoUrl || selectedPhotoUrl}
+          onApplyEdits={(editedDataUrl) => {
+            setSelectedPhotoUrl(editedDataUrl);
+          }}
+        />
       )}
 
       {/* Auth Modal Triggered from Converter / Order Flow */}
