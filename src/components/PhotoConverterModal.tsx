@@ -283,8 +283,17 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
       const result = await generatePatternFromImage(selectedPhotoUrl, config);
       setPattern(result);
 
-      // Always save conversion job so it appears in "My Patterns" immediately
+      console.log('[ConversionSave] Pattern generated successfully. Initiating save workflow...');
+
+      // Save conversion job so it appears in "My Patterns" and Supabase conversion_jobs table
       const userIdToSave = user?.id || user?.email || 'info.nxuswave@gmail.com';
+      console.log('[ConversionSave] User login status check:', {
+        isLoggedIn: !!user,
+        userId: user?.id,
+        userEmail: user?.email,
+        resolvedUserIdToSave: userIdToSave,
+      });
+
       const patternKey = `${userIdToSave}_${customPhotoName}_${result.widthStitches}x${result.heightStitches}_${result.flossList.length}`;
       if (lastSavedPatternKeyRef.current !== patternKey) {
         lastSavedPatternKeyRef.current = patternKey;
@@ -294,14 +303,18 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
 
         try {
           compactThumb = await createScaledThumbnail(selectedPhotoUrl, 250);
-        } catch {
+          console.log('[ConversionSave] Generated compact thumbnail (250px)');
+        } catch (thumbGenErr) {
+          console.error('[ConversionSave] Error creating scaled thumbnail:', thumbGenErr);
           compactThumb = selectedPhotoUrl;
         }
 
         if (selectedPhotoUrl.startsWith('blob:') || selectedPhotoUrl.startsWith('data:image/')) {
           try {
             scaledPhoto = await createScaledThumbnail(selectedPhotoUrl, 600);
-          } catch {
+            console.log('[ConversionSave] Generated scaled photo (600px)');
+          } catch (scalePhotoErr) {
+            console.error('[ConversionSave] Error creating scaled photo:', scalePhotoErr);
             scaledPhoto = compactThumb || selectedPhotoUrl;
           }
         }
@@ -310,26 +323,37 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
         let pdfUrl = '';
         let uploadedThumbUrl = '';
         try {
+          console.log('[ConversionSave] Generating pattern PDF blob for storage upload...');
           const pdfBlob = await generatePatternPDFBlob(result, 'color', config, customPhotoName || 'Converted Pattern');
+          console.log('[ConversionSave] Generated pattern PDF blob, size:', pdfBlob.size, 'bytes');
+
+          console.log('[ConversionSave] Uploading PDF blob to Supabase conversion-results storage bucket...');
           const uploadedPdf = await uploadPDFToSupabase(pdfBlob, customPhotoName || 'Converted Pattern', userIdToSave);
           if (uploadedPdf) {
             pdfUrl = uploadedPdf;
+            console.log('[ConversionSave] PDF uploaded successfully. Public URL:', pdfUrl);
+          } else {
+            console.warn('[ConversionSave] uploadPDFToSupabase returned null URL');
           }
         } catch (pdfErr) {
-          console.error('Error generating or uploading pattern PDF:', pdfErr);
+          console.error('[ConversionSave] Error generating or uploading pattern PDF:', pdfErr);
         }
 
         // Upload thumbnail to storage bucket alongside PDF
         try {
+          console.log('[ConversionSave] Uploading thumbnail to Supabase conversion-results storage bucket...');
           const uploadedThumb = await uploadThumbnailToSupabase(compactThumb || scaledPhoto, customPhotoName || 'Converted Pattern', userIdToSave);
           if (uploadedThumb) {
             uploadedThumbUrl = uploadedThumb;
+            console.log('[ConversionSave] Thumbnail uploaded successfully. Public URL:', uploadedThumbUrl);
+          } else {
+            console.warn('[ConversionSave] uploadThumbnailToSupabase returned null URL');
           }
         } catch (thumbErr) {
-          console.error('Error uploading thumbnail to storage:', thumbErr);
+          console.error('[ConversionSave] Error uploading thumbnail to storage:', thumbErr);
         }
 
-        saveUserConversionJob({
+        console.log('[ConversionSave] Invoking saveUserConversionJob with parameters:', {
           user_id: userIdToSave,
           title: customPhotoName || 'Converted Pattern',
           status: 'complete',
@@ -340,6 +364,22 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
           thumbnail_url: uploadedThumbUrl || compactThumb,
           pattern_pdf_url: pdfUrl,
         });
+
+        const saveSuccess = await saveUserConversionJob({
+          user_id: userIdToSave,
+          title: customPhotoName || 'Converted Pattern',
+          status: 'complete',
+          grid_width: result.widthStitches,
+          grid_height: result.heightStitches,
+          colors_count: result.flossList.length,
+          photo_url: uploadedThumbUrl || scaledPhoto,
+          thumbnail_url: uploadedThumbUrl || compactThumb,
+          pattern_pdf_url: pdfUrl,
+        });
+
+        console.log('[ConversionSave] saveUserConversionJob finished. Result:', saveSuccess);
+      } else {
+        console.log('[ConversionSave] Skipping save: pattern key already saved in this session instance:', patternKey);
       }
     } catch (err) {
       console.error('Pattern processing error:', err);

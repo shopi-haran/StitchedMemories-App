@@ -222,7 +222,23 @@ export async function saveUserConversionJob(jobData: {
   pattern_pdf_url?: string;
   [key: string]: any;
 }): Promise<boolean> {
-  if (!jobData.user_id) return false;
+  console.log('[saveUserConversionJob] Function invoked with data:', {
+    user_id: jobData.user_id,
+    title: jobData.title,
+    status: jobData.status,
+    grid: `${jobData.grid_width}x${jobData.grid_height}`,
+    colors_count: jobData.colors_count,
+    hasPhotoUrl: !!jobData.photo_url,
+    hasThumbUrl: !!jobData.thumbnail_url,
+    hasPdfUrl: !!jobData.pattern_pdf_url,
+    photo_url_snippet: jobData.photo_url ? jobData.photo_url.substring(0, 80) : '',
+    pdf_url_snippet: jobData.pattern_pdf_url ? jobData.pattern_pdf_url.substring(0, 80) : '',
+  });
+
+  if (!jobData.user_id) {
+    console.warn('[saveUserConversionJob] Missing user_id, aborting save');
+    return false;
+  }
 
   const rawPhoto = jobData.photo_url || jobData.thumbnail_url || '';
   let compactThumbnail = jobData.thumbnail_url || '';
@@ -238,6 +254,7 @@ export async function saveUserConversionJob(jobData: {
       }
     }
   } catch (e) {
+    console.error('[saveUserConversionJob] Failed to generate compact thumbnail:', e);
     compactThumbnail = rawPhoto;
   }
 
@@ -251,6 +268,7 @@ export async function saveUserConversionJob(jobData: {
       }
     }
   } catch (e) {
+    console.error('[saveUserConversionJob] Failed to generate medium photo:', e);
     mediumPhoto = compactThumbnail || rawPhoto;
   }
 
@@ -264,7 +282,7 @@ export async function saveUserConversionJob(jobData: {
       localStorage.setItem(`user_pattern_img_${jobData.title}`, finalThumb);
       localStorage.setItem(`user_pattern_thumb_${jobData.title}`, finalThumb);
     } catch (e) {
-      console.warn('LocalStorage quota for thumbnail cache:', e);
+      console.warn('[saveUserConversionJob] LocalStorage quota for thumbnail cache:', e);
     }
   }
 
@@ -272,7 +290,7 @@ export async function saveUserConversionJob(jobData: {
     try {
       localStorage.setItem(`user_pattern_photo_${jobData.title}`, finalPhoto);
     } catch (e) {
-      console.warn('LocalStorage quota for photo cache:', e);
+      console.warn('[saveUserConversionJob] LocalStorage quota for photo cache:', e);
     }
   }
 
@@ -298,32 +316,37 @@ export async function saveUserConversionJob(jobData: {
     list = list.filter(j => j.title !== newLocalJob.title);
     list.unshift(newLocalJob);
     localStorage.setItem('stitchly_local_conversion_jobs', JSON.stringify(list.slice(0, 50)));
+    console.log('[saveUserConversionJob] Saved job to local storage array cache');
   } catch (e) {
-    console.error('Failed to update local conversion jobs list:', e);
+    console.error('[saveUserConversionJob] Failed to update local conversion jobs list:', e);
   }
+
+  const insertPayload = {
+    user_id: jobData.user_id,
+    title: jobData.title || 'Converted Pattern',
+    status: jobData.status || 'complete',
+    grid_width: jobData.grid_width || 60,
+    grid_height: jobData.grid_height || 60,
+    colors_count: jobData.colors_count || 18,
+    photo_url: finalPhoto.length < 250000 ? finalPhoto : '',
+    thumbnail_url: jobData.thumbnail_url || (finalThumb.length < 100000 ? finalThumb : ''),
+    pattern_pdf_url: jobData.pattern_pdf_url || '',
+    created_at: new Date().toISOString(),
+  };
+
+  console.log('[saveUserConversionJob] Executing Supabase insert for conversion_jobs:', insertPayload);
 
   // Persist to Supabase database
   try {
-    const { error } = await supabase.from('conversion_jobs').insert([
-      {
-        user_id: jobData.user_id,
-        title: jobData.title || 'Converted Pattern',
-        status: jobData.status || 'complete',
-        grid_width: jobData.grid_width || 60,
-        grid_height: jobData.grid_height || 60,
-        colors_count: jobData.colors_count || 18,
-        photo_url: finalPhoto.length < 250000 ? finalPhoto : '',
-        thumbnail_url: jobData.thumbnail_url || (finalThumb.length < 100000 ? finalThumb : ''),
-        pattern_pdf_url: jobData.pattern_pdf_url || '',
-        created_at: new Date().toISOString(),
-      },
-    ]);
+    const { data, error } = await supabase.from('conversion_jobs').insert([insertPayload]).select();
 
     if (error) {
-      console.error('Error saving conversion job to Supabase:', error);
+      console.error('[saveUserConversionJob] Supabase insert error for conversion_jobs:', error);
+    } else {
+      console.log('[saveUserConversionJob] Supabase insert succeeded for conversion_jobs:', data);
     }
   } catch (err) {
-    console.error('Supabase insert exception:', err);
+    console.error('[saveUserConversionJob] Supabase insert exception:', err);
   }
 
   return true;
