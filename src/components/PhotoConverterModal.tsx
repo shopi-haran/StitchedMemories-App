@@ -295,7 +295,7 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
             grid_width: result.widthStitches,
             grid_height: result.heightStitches,
             colors_count: result.flossList.length,
-            photo_url: selectedPhotoUrl.startsWith('data:') ? '' : selectedPhotoUrl,
+            photo_url: selectedPhotoUrl,
           });
         }
       }

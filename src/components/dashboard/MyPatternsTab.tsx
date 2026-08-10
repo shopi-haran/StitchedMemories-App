@@ -9,10 +9,12 @@ import {
   AlertCircle, 
   CheckCircle2, 
   Image as ImageIcon,
-  RefreshCw
+  RefreshCw,
+  Lock
 } from 'lucide-react';
-import { fetchUserConversionJobs, SupabaseConversionJobRow } from '../../lib/supabase';
+import { fetchUserConversionJobs, fetchUserProfile, SupabaseConversionJobRow } from '../../lib/supabase';
 import { StitchTrackerModal } from './StitchTrackerModal';
+import dogImg from '../../assets/images/hoop_dog.png';
 
 interface UserProfile {
   id?: string;
@@ -33,6 +35,70 @@ export const MyPatternsTab: React.FC<MyPatternsTabProps> = ({ user, onOpenConver
   const [totalCount, setTotalCount] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
   const [selectedTrackerJob, setSelectedTrackerJob] = useState<SupabaseConversionJobRow | null>(null);
+  const [planTier, setPlanTier] = useState<'free' | 'pro' | 'studio'>('free');
+
+  // Sync plan tier
+  useEffect(() => {
+    let active = true;
+    async function syncTier() {
+      try {
+        const globalOverride = localStorage.getItem('user_tier_global');
+        if (globalOverride === 'free' || globalOverride === 'pro' || globalOverride === 'studio') {
+          if (active) setPlanTier(globalOverride);
+          return;
+        }
+        if (user?.email) {
+          const userOverride = localStorage.getItem(`user_tier_${user.email.toLowerCase()}`);
+          if (userOverride === 'free' || userOverride === 'pro' || userOverride === 'studio') {
+            if (active) setPlanTier(userOverride);
+            return;
+          }
+        }
+        const defaultOverride = localStorage.getItem('user_tier_shopi.haran@gmail.com');
+        if (defaultOverride === 'free' || defaultOverride === 'pro' || defaultOverride === 'studio') {
+          if (active) setPlanTier(defaultOverride);
+          return;
+        }
+
+        if (user?.email || user?.id) {
+          const profile = await fetchUserProfile(user.id, user.email);
+          const rawTier = (profile?.subscription_tier || '').toLowerCase();
+          if (active) {
+            if (rawTier.includes('studio')) setPlanTier('studio');
+            else if (rawTier.includes('pro')) setPlanTier('pro');
+            else setPlanTier('free');
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching user profile for patterns tab:', err);
+      }
+    }
+
+    syncTier();
+
+    const handleTierChange = (e: any) => {
+      let extractedTier: 'free' | 'pro' | 'studio' | null = null;
+      if (typeof e?.detail === 'string') {
+        extractedTier = e.detail as any;
+      } else if (typeof e?.detail?.tier === 'string') {
+        extractedTier = e.detail.tier as any;
+      }
+      if (extractedTier && ['free', 'pro', 'studio'].includes(extractedTier)) {
+        setPlanTier(extractedTier);
+      } else {
+        syncTier();
+      }
+    };
+
+    window.addEventListener('dev-tier-changed', handleTierChange);
+    window.addEventListener('tierChanged', handleTierChange);
+
+    return () => {
+      active = false;
+      window.removeEventListener('dev-tier-changed', handleTierChange);
+      window.removeEventListener('tierChanged', handleTierChange);
+    };
+  }, [user]);
 
   const getJobProgressCount = (jobId: string | number) => {
     try {
@@ -47,6 +113,16 @@ export const MyPatternsTab: React.FC<MyPatternsTabProps> = ({ user, onOpenConver
       return 0;
     }
     return 0;
+  };
+
+  const getJobPhotoUrl = (job: SupabaseConversionJobRow) => {
+    if (job.thumbnail_url) return job.thumbnail_url;
+    if (job.photo_url) return job.photo_url;
+    try {
+      const cached = localStorage.getItem(`user_pattern_img_${job.user_id}_${job.title}`);
+      if (cached) return cached;
+    } catch {}
+    return dogImg;
   };
 
   const PAGE_SIZE = 10;
@@ -233,23 +309,15 @@ export const MyPatternsTab: React.FC<MyPatternsTabProps> = ({ user, onOpenConver
                     
                     {/* Thumbnail Image */}
                     <div className="w-28 h-28 bg-white border border-[#E8E1D2] rounded-2xl overflow-hidden shrink-0 flex items-center justify-center relative shadow-xs">
-                      {job.thumbnail_url ? (
-                        <img
-                          src={job.thumbnail_url}
-                          alt={cardTitle}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                          referrerPolicy="no-referrer"
-                          onError={(e) => {
-                            // Fallback if image load fails
-                            (e.target as HTMLElement).style.display = 'none';
-                          }}
-                        />
-                      ) : (
-                        <div className="flex flex-col items-center justify-center p-2 text-[#93A28F] text-center">
-                          <ImageIcon className="w-7 h-7 mb-1" />
-                          <span className="text-[10px] font-semibold">Pattern</span>
-                        </div>
-                      )}
+                      <img
+                        src={getJobPhotoUrl(job)}
+                        alt={cardTitle}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        referrerPolicy="no-referrer"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = dogImg;
+                        }}
+                      />
                     </div>
 
                     {/* Job Details */}
@@ -300,32 +368,65 @@ export const MyPatternsTab: React.FC<MyPatternsTabProps> = ({ user, onOpenConver
                   <div className="pt-3 border-t border-[#E8E1D2]/80 flex flex-col sm:flex-row items-center gap-2">
                     
                     {isComplete ? (
-                      <>
-                        <button
-                          onClick={() => setSelectedTrackerJob(job)}
-                          className="w-full sm:w-1/2 py-2 px-3 bg-[#3D5239] hover:bg-[#2C3B29] text-white text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
-                          title="Open Interactive Stitch Progress Tracker"
-                        >
-                          <CheckCircle2 className="w-3.5 h-3.5 text-[#E06C38]" />
-                          <span>Track Progress</span>
-                        </button>
+                      planTier === 'free' ? (
+                        <>
+                          <a
+                            href={job.pattern_pdf_url || '#'}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => {
+                              if (!job.pattern_pdf_url) {
+                                e.preventDefault();
+                                alert('PDF chart is preparing. Opening pattern converter...');
+                                onOpenConverter();
+                              }
+                            }}
+                            className="w-full sm:flex-1 py-2.5 px-4 bg-[#E06C38] hover:bg-[#d05c28] text-white text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2 shadow-xs"
+                          >
+                            <Download className="w-4 h-4" />
+                            <span>Download Pattern (PDF)</span>
+                          </a>
 
-                        <a
-                          href={job.pattern_pdf_url || '#'}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(e) => {
-                            if (!job.pattern_pdf_url) {
-                              e.preventDefault();
-                              alert('PDF chart URL is preparing. Please check back shortly.');
-                            }
-                          }}
-                          className="w-full sm:w-1/2 py-2 px-3 bg-[#E06C38] hover:bg-[#d05c28] text-white text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                          <span>PDF Chart</span>
-                        </a>
-                      </>
+                          <button
+                            onClick={() => {
+                              alert('Interactive Stitch Progress Tracking is an exclusive feature for Pro Crafter & Studio Plan members! Free plan members can download full PDF pattern charts. Switch plan mode to test.');
+                            }}
+                            className="w-full sm:w-auto py-2.5 px-3 bg-[#F0EBE1] hover:bg-[#E8E1D2] text-[#7A8877] text-xs font-bold rounded-xl border border-[#DCD2C0] transition-all cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
+                            title="Stitch Progress Tracker is a Pro & Studio feature"
+                          >
+                            <Lock className="w-3.5 h-3.5 text-[#E06C38]" />
+                            <span>Tracker (Pro)</span>
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => setSelectedTrackerJob(job)}
+                            className="w-full sm:w-1/2 py-2 px-3 bg-[#3D5239] hover:bg-[#2C3B29] text-white text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
+                            title="Open Interactive Stitch Progress Tracker"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5 text-[#E06C38]" />
+                            <span>Track Progress</span>
+                          </button>
+
+                          <a
+                            href={job.pattern_pdf_url || '#'}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => {
+                              if (!job.pattern_pdf_url) {
+                                e.preventDefault();
+                                alert('PDF chart is preparing. Opening pattern converter...');
+                                onOpenConverter();
+                              }
+                            }}
+                            className="w-full sm:w-1/2 py-2 px-3 bg-[#E06C38] hover:bg-[#d05c28] text-white text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            <span>PDF Chart</span>
+                          </a>
+                        </>
+                      )
                     ) : isProcessing ? (
                       <div className="w-full py-2.5 px-4 bg-amber-50/80 border border-amber-200 text-amber-800 text-xs font-semibold rounded-xl flex items-center justify-center gap-2">
                         <Loader2 className="w-4 h-4 animate-spin text-amber-600" />

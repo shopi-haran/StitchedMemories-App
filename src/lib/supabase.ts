@@ -153,6 +153,17 @@ export async function saveUserConversionJob(jobData: {
 }): Promise<boolean> {
   if (!jobData.user_id) return false;
 
+  const photoToSave = jobData.photo_url || '';
+
+  // Cache photo image in localStorage so dashboard thumbnails render instantly
+  if (photoToSave && photoToSave.length < 500000) {
+    try {
+      localStorage.setItem(`user_pattern_img_${jobData.user_id}_${jobData.title}`, photoToSave);
+    } catch {
+      // Storage quota exceeded fallback
+    }
+  }
+
   const { error } = await supabase.from('conversion_jobs').insert([
     {
       user_id: jobData.user_id,
@@ -161,7 +172,7 @@ export async function saveUserConversionJob(jobData: {
       grid_width: jobData.grid_width || 100,
       grid_height: jobData.grid_height || 100,
       colors_count: jobData.colors_count || 18,
-      photo_url: jobData.photo_url || '',
+      photo_url: photoToSave.length > 2000 ? '' : photoToSave,
       created_at: new Date().toISOString(),
     },
   ]);
