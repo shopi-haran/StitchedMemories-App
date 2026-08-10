@@ -225,25 +225,55 @@ export async function saveUserConversionJob(jobData: {
 }): Promise<boolean> {
   if (!jobData.user_id) return false;
 
-  const photoToSave = jobData.photo_url || jobData.thumbnail_url || '';
-  let compactThumbnail = jobData.thumbnail_url || photoToSave;
+  const rawPhoto = jobData.photo_url || jobData.thumbnail_url || '';
+  let compactThumbnail = jobData.thumbnail_url || '';
+  let mediumPhoto = jobData.photo_url || '';
 
-  // Generate scaled thumbnail for instant card display if data URL or long string
-  if (compactThumbnail && compactThumbnail.length > 5000) {
+  // 1. Generate compact thumbnail (250px) for fast card display
+  try {
+    if (rawPhoto) {
+      if (rawPhoto.startsWith('data:image/') || rawPhoto.startsWith('blob:') || rawPhoto.length > 5000) {
+        compactThumbnail = await createScaledThumbnail(rawPhoto, 250);
+      } else {
+        compactThumbnail = rawPhoto;
+      }
+    }
+  } catch (e) {
+    compactThumbnail = rawPhoto;
+  }
+
+  // 2. Generate medium scaled photo (600px) so blob: URLs or large files persist reliably
+  try {
+    if (rawPhoto) {
+      if (rawPhoto.startsWith('blob:') || rawPhoto.length > 100000) {
+        mediumPhoto = await createScaledThumbnail(rawPhoto, 600);
+      } else {
+        mediumPhoto = rawPhoto;
+      }
+    }
+  } catch (e) {
+    mediumPhoto = compactThumbnail || rawPhoto;
+  }
+
+  const finalThumb = compactThumbnail || mediumPhoto;
+  const finalPhoto = mediumPhoto || finalThumb;
+
+  // Cache thumbnail & photo in localStorage under multiple key conventions for immediate synchronous access
+  if (finalThumb) {
     try {
-      compactThumbnail = await createScaledThumbnail(compactThumbnail, 250);
-    } catch {
-      // Fallback
+      localStorage.setItem(`user_pattern_img_${jobData.user_id}_${jobData.title}`, finalThumb);
+      localStorage.setItem(`user_pattern_img_${jobData.title}`, finalThumb);
+      localStorage.setItem(`user_pattern_thumb_${jobData.title}`, finalThumb);
+    } catch (e) {
+      console.warn('LocalStorage quota for thumbnail cache:', e);
     }
   }
 
-  // 1. Cache thumbnail in localStorage for instant dashboard card rendering
-  if (compactThumbnail) {
+  if (finalPhoto) {
     try {
-      localStorage.setItem(`user_pattern_img_${jobData.user_id}_${jobData.title}`, compactThumbnail);
-      localStorage.setItem(`user_pattern_img_${jobData.title}`, compactThumbnail);
-    } catch {
-      // Storage quota fallback
+      localStorage.setItem(`user_pattern_photo_${jobData.title}`, finalPhoto);
+    } catch (e) {
+      console.warn('LocalStorage quota for photo cache:', e);
     }
   }
 
@@ -255,23 +285,24 @@ export async function saveUserConversionJob(jobData: {
     grid_width: jobData.grid_width || 60,
     grid_height: jobData.grid_height || 60,
     colors_count: jobData.colors_count || 18,
-    photo_url: photoToSave.length > 2000 ? '' : photoToSave,
-    thumbnail_url: compactThumbnail,
+    photo_url: finalPhoto.length < 250000 ? finalPhoto : '',
+    thumbnail_url: finalThumb.length < 100000 ? finalThumb : '',
     created_at: new Date().toISOString(),
   };
 
-  // 2. Persist locally to localStorage array
+  // Persist locally to localStorage array
   try {
     const raw = localStorage.getItem('stitchly_local_conversion_jobs');
-    const list: SupabaseConversionJobRow[] = raw ? JSON.parse(raw) : [];
-    // Unshift to put newest at the top
+    let list: SupabaseConversionJobRow[] = raw ? JSON.parse(raw) : [];
+    // Remove duplicate entry with same title if present
+    list = list.filter(j => j.title !== newLocalJob.title);
     list.unshift(newLocalJob);
     localStorage.setItem('stitchly_local_conversion_jobs', JSON.stringify(list.slice(0, 50)));
   } catch (e) {
     console.error('Failed to update local conversion jobs list:', e);
   }
 
-  // 3. Persist to Supabase database
+  // Persist to Supabase database
   try {
     const { error } = await supabase.from('conversion_jobs').insert([
       {
@@ -281,8 +312,8 @@ export async function saveUserConversionJob(jobData: {
         grid_width: jobData.grid_width || 60,
         grid_height: jobData.grid_height || 60,
         colors_count: jobData.colors_count || 18,
-        photo_url: photoToSave.length > 2000 ? '' : photoToSave,
-        thumbnail_url: compactThumbnail.length < 50000 ? compactThumbnail : '',
+        photo_url: finalPhoto.length < 250000 ? finalPhoto : '',
+        thumbnail_url: finalThumb.length < 100000 ? finalThumb : '',
         created_at: new Date().toISOString(),
       },
     ]);

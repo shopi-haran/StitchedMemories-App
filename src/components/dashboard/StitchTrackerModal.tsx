@@ -79,15 +79,17 @@ export const StitchTrackerModal: React.FC<StitchTrackerModalProps> = ({
 
     const initPattern = async () => {
       try {
-        let photoUrl = job.thumbnail_url || job.photo_url || '';
-        if (!photoUrl || photoUrl.length < 5) {
+        let photoUrl = job.photo_url || job.thumbnail_url || '';
+        if (!photoUrl || photoUrl.length < 5 || photoUrl.startsWith('blob:')) {
           try {
-            const cachedByTitleAndUser = localStorage.getItem(`user_pattern_img_${job.user_id}_${job.title}`);
-            const cachedByTitle = localStorage.getItem(`user_pattern_img_${job.title}`);
-            photoUrl = cachedByTitleAndUser || cachedByTitle || '';
+            const cachedPhoto = localStorage.getItem(`user_pattern_photo_${job.title}`);
+            const cachedImgUser = localStorage.getItem(`user_pattern_img_${job.user_id}_${job.title}`);
+            const cachedImgTitle = localStorage.getItem(`user_pattern_img_${job.title}`);
+            const cachedThumb = localStorage.getItem(`user_pattern_thumb_${job.title}`);
+            photoUrl = cachedPhoto || cachedImgUser || cachedImgTitle || cachedThumb || photoUrl || '';
           } catch {}
         }
-        if (!photoUrl) {
+        if (!photoUrl || photoUrl.startsWith('blob:')) {
           photoUrl = dogImg;
         }
 

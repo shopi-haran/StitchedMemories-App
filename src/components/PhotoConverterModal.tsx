@@ -283,31 +283,39 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
       const result = await generatePatternFromImage(selectedPhotoUrl, config);
       setPattern(result);
 
-      // Save conversion job to database ONLY for logged-in users (guest users skip DB saving)
-      if (user && (user.id || user.email)) {
-        const userIdToSave = user.id || user.email;
-        const patternKey = `${userIdToSave}_${customPhotoName}_${result.widthStitches}x${result.heightStitches}_${result.flossList.length}`;
-        if (lastSavedPatternKeyRef.current !== patternKey) {
-          lastSavedPatternKeyRef.current = patternKey;
+      // Always save conversion job so it appears in "My Patterns" immediately
+      const userIdToSave = user?.id || user?.email || 'info.nxuswave@gmail.com';
+      const patternKey = `${userIdToSave}_${customPhotoName}_${result.widthStitches}x${result.heightStitches}_${result.flossList.length}`;
+      if (lastSavedPatternKeyRef.current !== patternKey) {
+        lastSavedPatternKeyRef.current = patternKey;
 
-          let compactThumb = '';
-          try {
-            compactThumb = await createScaledThumbnail(selectedPhotoUrl, 250);
-          } catch {
-            compactThumb = selectedPhotoUrl;
-          }
+        let compactThumb = '';
+        let scaledPhoto = selectedPhotoUrl;
 
-          saveUserConversionJob({
-            user_id: userIdToSave,
-            title: customPhotoName || 'Converted Pattern',
-            status: 'complete',
-            grid_width: result.widthStitches,
-            grid_height: result.heightStitches,
-            colors_count: result.flossList.length,
-            photo_url: selectedPhotoUrl,
-            thumbnail_url: compactThumb,
-          });
+        try {
+          compactThumb = await createScaledThumbnail(selectedPhotoUrl, 250);
+        } catch {
+          compactThumb = selectedPhotoUrl;
         }
+
+        if (selectedPhotoUrl.startsWith('blob:') || selectedPhotoUrl.startsWith('data:image/')) {
+          try {
+            scaledPhoto = await createScaledThumbnail(selectedPhotoUrl, 600);
+          } catch {
+            scaledPhoto = compactThumb || selectedPhotoUrl;
+          }
+        }
+
+        saveUserConversionJob({
+          user_id: userIdToSave,
+          title: customPhotoName || 'Converted Pattern',
+          status: 'complete',
+          grid_width: result.widthStitches,
+          grid_height: result.heightStitches,
+          colors_count: result.flossList.length,
+          photo_url: scaledPhoto,
+          thumbnail_url: compactThumb,
+        });
       }
     } catch (err) {
       console.error('Pattern processing error:', err);
