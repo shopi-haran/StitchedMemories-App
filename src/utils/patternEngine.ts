@@ -71,6 +71,38 @@ export function loadImage(url: string): Promise<HTMLImageElement> {
   });
 }
 
+// Generate compact thumbnail data URL (~15KB) from any source image
+export async function createScaledThumbnail(srcUrl: string, maxDim = 250): Promise<string> {
+  if (!srcUrl) return '';
+  try {
+    const img = await loadImage(srcUrl);
+    const canvas = document.createElement('canvas');
+    let w = img.naturalWidth || img.width || 250;
+    let h = img.naturalHeight || img.height || 250;
+    if (w > h) {
+      if (w > maxDim) {
+        h = Math.round((h * maxDim) / w);
+        w = maxDim;
+      }
+    } else {
+      if (h > maxDim) {
+        w = Math.round((w * maxDim) / h);
+        h = maxDim;
+      }
+    }
+    canvas.width = Math.max(10, w);
+    canvas.height = Math.max(10, h);
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      return canvas.toDataURL('image/jpeg', 0.82);
+    }
+  } catch (err) {
+    console.warn('Failed to create scaled thumbnail:', err);
+  }
+  return srcUrl;
+}
+
 // Multi-step high-quality downsampling to preserve sharp edges and local contrast like Pixel-Stitch
 export function resampleImageHighQuality(
   img: HTMLImageElement,

@@ -61,7 +61,7 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
         }
 
         if (!targetTier) {
-          const defaultOverride = localStorage.getItem('user_tier_shopi.haran@gmail.com');
+          const defaultOverride = localStorage.getItem('user_tier_info.nxuswave@gmail.com') || localStorage.getItem('user_tier_shopi.haran@gmail.com');
           if (defaultOverride === 'free' || defaultOverride === 'pro' || defaultOverride === 'studio') {
             targetTier = defaultOverride;
           }
@@ -71,7 +71,7 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
       // 2. Fetch from Supabase profile if no local override found
       if (!targetTier) {
         try {
-          const emailToUse = user?.email || 'shopi.haran@gmail.com';
+          const emailToUse = user?.email || 'info.nxuswave@gmail.com';
           const idToUse = user?.id || emailToUse;
           const profile = await fetchUserProfile(idToUse, emailToUse);
           const rawTier = (profile?.subscription_tier || '').toLowerCase();

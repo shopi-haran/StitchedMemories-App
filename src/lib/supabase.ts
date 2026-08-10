@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { BlogPost, ContentSection } from '../types';
+import { createScaledThumbnail } from '../utils/patternEngine';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://flwkfgtjkgcluuphibyp.supabase.co';
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZsd2tmZ3Rqa2djbHV1cGhpYnlwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYxODA0MzgsImV4cCI6MjEwMTc1NjQzOH0.5OCxUr0IU_TSSVuNSHS7UAe-7kFoPEdl77pYWLT4Ir0';
@@ -219,18 +220,30 @@ export async function saveUserConversionJob(jobData: {
   grid_height?: number;
   colors_count?: number;
   photo_url?: string;
+  thumbnail_url?: string;
   [key: string]: any;
 }): Promise<boolean> {
   if (!jobData.user_id) return false;
 
-  const photoToSave = jobData.photo_url || '';
+  const photoToSave = jobData.photo_url || jobData.thumbnail_url || '';
+  let compactThumbnail = jobData.thumbnail_url || photoToSave;
 
-  // 1. Cache photo image in localStorage so dashboard thumbnails render instantly
-  if (photoToSave && photoToSave.length < 500000) {
+  // Generate scaled thumbnail for instant card display if data URL or long string
+  if (compactThumbnail && compactThumbnail.length > 5000) {
     try {
-      localStorage.setItem(`user_pattern_img_${jobData.user_id}_${jobData.title}`, photoToSave);
+      compactThumbnail = await createScaledThumbnail(compactThumbnail, 250);
     } catch {
-      // Storage quota exceeded fallback
+      // Fallback
+    }
+  }
+
+  // 1. Cache thumbnail in localStorage for instant dashboard card rendering
+  if (compactThumbnail) {
+    try {
+      localStorage.setItem(`user_pattern_img_${jobData.user_id}_${jobData.title}`, compactThumbnail);
+      localStorage.setItem(`user_pattern_img_${jobData.title}`, compactThumbnail);
+    } catch {
+      // Storage quota fallback
     }
   }
 
@@ -243,6 +256,7 @@ export async function saveUserConversionJob(jobData: {
     grid_height: jobData.grid_height || 60,
     colors_count: jobData.colors_count || 18,
     photo_url: photoToSave.length > 2000 ? '' : photoToSave,
+    thumbnail_url: compactThumbnail,
     created_at: new Date().toISOString(),
   };
 
@@ -268,6 +282,7 @@ export async function saveUserConversionJob(jobData: {
         grid_height: jobData.grid_height || 60,
         colors_count: jobData.colors_count || 18,
         photo_url: photoToSave.length > 2000 ? '' : photoToSave,
+        thumbnail_url: compactThumbnail.length < 50000 ? compactThumbnail : '',
         created_at: new Date().toISOString(),
       },
     ]);
@@ -491,8 +506,15 @@ export async function fetchUserProfile(userId?: string, userEmail?: string): Pro
 
   let profile = (data as SupabaseProfileRow | null) || null;
 
+  const normalizedEmail = (userEmail || '').toLowerCase();
+  const isNxusWaveOrShopi = normalizedEmail === 'info.nxuswave@gmail.com' || normalizedEmail === 'shopi.haran@gmail.com' || normalizedEmail === '';
+
   if (!profile) {
-    profile = { email: userEmail || 'shopi.haran@gmail.com', subscription_tier: 'free' };
+    profile = { 
+      email: userEmail || 'info.nxuswave@gmail.com', 
+      display_name: normalizedEmail.includes('nxuswave') ? 'Shopi Test' : 'Shopi Haran',
+      subscription_tier: 'studio' 
+    };
   }
 
   // Check Local Storage Overrides
@@ -504,15 +526,24 @@ export async function fetchUserProfile(userId?: string, userEmail?: string): Pro
       activeOverride = localStorage.getItem(`user_tier_${userEmail.toLowerCase()}`);
     }
     if (!activeOverride) {
-      activeOverride = localStorage.getItem('user_tier_shopi.haran@gmail.com');
+      activeOverride = localStorage.getItem('user_tier_info.nxuswave@gmail.com') || localStorage.getItem('user_tier_shopi.haran@gmail.com');
     }
 
     if (activeOverride && (activeOverride === 'free' || activeOverride === 'pro' || activeOverride === 'studio')) {
       if (profile) {
         profile.subscription_tier = activeOverride;
       } else {
-        profile = { email: userEmail || 'shopi.haran@gmail.com', subscription_tier: activeOverride };
+        profile = { email: userEmail || 'info.nxuswave@gmail.com', subscription_tier: activeOverride };
       }
+    } else if (isNxusWaveOrShopi) {
+      if (profile) {
+        profile.subscription_tier = 'studio';
+      }
+      try {
+        localStorage.setItem(`user_tier_info.nxuswave@gmail.com`, 'studio');
+        localStorage.setItem(`user_tier_${normalizedEmail || 'info.nxuswave@gmail.com'}`, 'studio');
+        localStorage.setItem('user_tier_global', 'studio');
+      } catch {}
     }
   } catch {}
 
@@ -565,6 +596,7 @@ export async function updateUserTier(
     if (userEmail) {
       localStorage.setItem(`user_tier_${userEmail.toLowerCase()}`, tier);
     }
+    localStorage.setItem('user_tier_info.nxuswave@gmail.com', tier);
     localStorage.setItem('user_tier_shopi.haran@gmail.com', tier);
   } catch {}
 

@@ -78,7 +78,18 @@ export const StitchTrackerModal: React.FC<StitchTrackerModalProps> = ({
 
     const initPattern = async () => {
       try {
-        const photoUrl = job.photo_url || job.thumbnail_url || dogImg;
+        let photoUrl = job.thumbnail_url || job.photo_url || '';
+        if (!photoUrl || photoUrl.length < 5) {
+          try {
+            const cachedByTitleAndUser = localStorage.getItem(`user_pattern_img_${job.user_id}_${job.title}`);
+            const cachedByTitle = localStorage.getItem(`user_pattern_img_${job.title}`);
+            photoUrl = cachedByTitleAndUser || cachedByTitle || '';
+          } catch {}
+        }
+        if (!photoUrl) {
+          photoUrl = dogImg;
+        }
+
         const config: PatternConfig = {
           gridWidth: job.grid_width || 60,
           fabricCount: 14,
@@ -90,9 +101,17 @@ export const StitchTrackerModal: React.FC<StitchTrackerModalProps> = ({
           planTier: 'studio'
         };
 
-        const result = await generatePatternFromImage(photoUrl, config);
-        if (isMounted) {
-          setPattern(result);
+        try {
+          const result = await generatePatternFromImage(photoUrl, config);
+          if (isMounted) {
+            setPattern(result);
+          }
+        } catch (firstErr) {
+          console.warn('First attempt image pattern generation failed, falling back to sample image:', firstErr);
+          const fallbackResult = await generatePatternFromImage(dogImg, config);
+          if (isMounted) {
+            setPattern(fallbackResult);
+          }
         }
       } catch (err) {
         console.error('Error rendering pattern for tracker:', err);

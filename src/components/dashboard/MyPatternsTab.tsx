@@ -10,7 +10,8 @@ import {
   CheckCircle2, 
   Image as ImageIcon,
   RefreshCw,
-  Lock
+  Lock,
+  Eye
 } from 'lucide-react';
 import { fetchUserConversionJobs, fetchUserProfile, SupabaseConversionJobRow } from '../../lib/supabase';
 import { StitchTrackerModal } from './StitchTrackerModal';
@@ -54,7 +55,7 @@ export const MyPatternsTab: React.FC<MyPatternsTabProps> = ({ user, onOpenConver
             return;
           }
         }
-        const defaultOverride = localStorage.getItem('user_tier_shopi.haran@gmail.com');
+        const defaultOverride = localStorage.getItem('user_tier_info.nxuswave@gmail.com') || localStorage.getItem('user_tier_shopi.haran@gmail.com');
         if (defaultOverride === 'free' || defaultOverride === 'pro' || defaultOverride === 'studio') {
           if (active) setPlanTier(defaultOverride);
           return;
@@ -307,17 +308,26 @@ export const MyPatternsTab: React.FC<MyPatternsTabProps> = ({ user, onOpenConver
                 >
                   <div className="flex gap-4 items-start mb-4">
                     
-                    {/* Thumbnail Image */}
-                    <div className="w-28 h-28 bg-white border border-[#E8E1D2] rounded-2xl overflow-hidden shrink-0 flex items-center justify-center relative shadow-xs">
+                    {/* Thumbnail Image - Clickable to View Pattern */}
+                    <div 
+                      onClick={() => isComplete && setSelectedTrackerJob(job)}
+                      className="w-28 h-28 bg-white border border-[#E8E1D2] hover:border-[#E06C38] rounded-2xl overflow-hidden shrink-0 flex items-center justify-center relative shadow-xs cursor-pointer group/thumb"
+                      title="Click to view pattern chart on-screen"
+                    >
                       <img
                         src={getJobPhotoUrl(job)}
                         alt={cardTitle}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        className="w-full h-full object-cover group-hover/thumb:scale-105 transition-transform duration-300"
                         referrerPolicy="no-referrer"
                         onError={(e) => {
                           (e.target as HTMLImageElement).src = dogImg;
                         }}
                       />
+                      {isComplete && (
+                        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover/thumb:opacity-100 transition-opacity flex items-center justify-center">
+                          <Eye className="w-6 h-6 text-white drop-shadow-md" />
+                        </div>
+                      )}
                     </div>
 
                     {/* Job Details */}
@@ -326,7 +336,11 @@ export const MyPatternsTab: React.FC<MyPatternsTabProps> = ({ user, onOpenConver
                         {renderStatusBadge(job.status)}
                       </div>
 
-                      <h3 className="text-base font-bold text-[#1D231E] leading-snug truncate mb-1" title={cardTitle}>
+                      <h3 
+                        onClick={() => isComplete && setSelectedTrackerJob(job)}
+                        className={`text-base font-bold text-[#1D231E] leading-snug truncate mb-1 ${isComplete ? 'hover:text-[#E06C38] cursor-pointer' : ''}`} 
+                        title={cardTitle}
+                      >
                         {cardTitle}
                       </h3>
 
@@ -368,65 +382,33 @@ export const MyPatternsTab: React.FC<MyPatternsTabProps> = ({ user, onOpenConver
                   <div className="pt-3 border-t border-[#E8E1D2]/80 flex flex-col sm:flex-row items-center gap-2">
                     
                     {isComplete ? (
-                      planTier === 'free' ? (
-                        <>
-                          <a
-                            href={job.pattern_pdf_url || '#'}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={(e) => {
-                              if (!job.pattern_pdf_url) {
-                                e.preventDefault();
-                                alert('PDF chart is preparing. Opening pattern converter...');
-                                onOpenConverter();
-                              }
-                            }}
-                            className="w-full sm:flex-1 py-2.5 px-4 bg-[#E06C38] hover:bg-[#d05c28] text-white text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2 shadow-xs"
-                          >
-                            <Download className="w-4 h-4" />
-                            <span>Download Pattern (PDF)</span>
-                          </a>
+                      <>
+                        <button
+                          onClick={() => setSelectedTrackerJob(job)}
+                          className="w-full sm:w-1/2 py-2 px-3 bg-[#3D5239] hover:bg-[#2C3B29] text-white text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
+                          title="Open pattern chart to view on-screen without downloading"
+                        >
+                          <Eye className="w-3.5 h-3.5 text-[#E06C38]" />
+                          <span>View Pattern</span>
+                        </button>
 
-                          <button
-                            onClick={() => {
-                              alert('Interactive Stitch Progress Tracking is an exclusive feature for Pro Crafter & Studio Plan members! Free plan members can download full PDF pattern charts. Switch plan mode to test.');
-                            }}
-                            className="w-full sm:w-auto py-2.5 px-3 bg-[#F0EBE1] hover:bg-[#E8E1D2] text-[#7A8877] text-xs font-bold rounded-xl border border-[#DCD2C0] transition-all cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
-                            title="Stitch Progress Tracker is a Pro & Studio feature"
-                          >
-                            <Lock className="w-3.5 h-3.5 text-[#E06C38]" />
-                            <span>Tracker (Pro)</span>
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <button
-                            onClick={() => setSelectedTrackerJob(job)}
-                            className="w-full sm:w-1/2 py-2 px-3 bg-[#3D5239] hover:bg-[#2C3B29] text-white text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
-                            title="Open Interactive Stitch Progress Tracker"
-                          >
-                            <CheckCircle2 className="w-3.5 h-3.5 text-[#E06C38]" />
-                            <span>Track Progress</span>
-                          </button>
-
-                          <a
-                            href={job.pattern_pdf_url || '#'}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={(e) => {
-                              if (!job.pattern_pdf_url) {
-                                e.preventDefault();
-                                alert('PDF chart is preparing. Opening pattern converter...');
-                                onOpenConverter();
-                              }
-                            }}
-                            className="w-full sm:w-1/2 py-2 px-3 bg-[#E06C38] hover:bg-[#d05c28] text-white text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
-                          >
-                            <Download className="w-3.5 h-3.5" />
-                            <span>PDF Chart</span>
-                          </a>
-                        </>
-                      )
+                        <a
+                          href={job.pattern_pdf_url || '#'}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => {
+                            if (!job.pattern_pdf_url) {
+                              e.preventDefault();
+                              alert('PDF chart is preparing. Opening pattern converter...');
+                              onOpenConverter();
+                            }
+                          }}
+                          className="w-full sm:w-1/2 py-2 px-3 bg-[#E06C38] hover:bg-[#d05c28] text-white text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          <span>PDF Chart</span>
+                        </a>
+                      </>
                     ) : isProcessing ? (
                       <div className="w-full py-2.5 px-4 bg-amber-50/80 border border-amber-200 text-amber-800 text-xs font-semibold rounded-xl flex items-center justify-center gap-2">
                         <Loader2 className="w-4 h-4 animate-spin text-amber-600" />
