@@ -20,6 +20,7 @@ import {
   GeneratedPattern, 
   PatternConfig 
 } from '../../utils/patternEngine';
+import { exportPatternToPDF } from '../../utils/pdfExporter';
 import dogImg from '../../assets/images/hoop_dog.png';
 
 interface StitchTrackerModalProps {
@@ -129,8 +130,8 @@ export const StitchTrackerModal: React.FC<StitchTrackerModalProps> = ({
     };
   }, [isOpen, job]);
 
-  // Render pattern on canvas whenever pattern, viewMode, completedStitches or zoom changes
-  useEffect(() => {
+  // Render pattern on canvas reliably
+  const drawCanvas = useCallback(() => {
     if (canvasRef.current && pattern) {
       const config: PatternConfig = {
         gridWidth: pattern.widthStitches,
@@ -151,7 +152,19 @@ export const StitchTrackerModal: React.FC<StitchTrackerModalProps> = ({
         completedStitches
       );
     }
-  }, [pattern, viewMode, completedStitches, zoomLevel]);
+  }, [pattern, viewMode, completedStitches]);
+
+  // Callback ref guarantees canvas rendering as soon as element mounts
+  const setCanvasRef = useCallback((node: HTMLCanvasElement | null) => {
+    canvasRef.current = node;
+    if (node && pattern) {
+      drawCanvas();
+    }
+  }, [pattern, drawCanvas]);
+
+  useEffect(() => {
+    drawCanvas();
+  }, [drawCanvas, zoomLevel]);
 
   // Canvas Click Handler: Toggle stitch completed status
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -258,13 +271,42 @@ export const StitchTrackerModal: React.FC<StitchTrackerModalProps> = ({
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            className="p-2 rounded-xl text-[#6B7869] hover:text-[#1D231E] hover:bg-[#FAF6EE] transition-colors cursor-pointer border border-[#E8E1D2]"
-            title="Close tracker"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={async () => {
+                if (!pattern) return;
+                try {
+                  const config: PatternConfig = {
+                    gridWidth: pattern.widthStitches,
+                    fabricCount: 14,
+                    colorLimit: pattern.flossList.length,
+                    showGridLines: true,
+                    showSymbols: true,
+                    brand: 'DMC',
+                    isAdFree: true,
+                    planTier: 'studio'
+                  };
+                  await exportPatternToPDF(pattern, viewMode === 'symbol' ? 'symbol' : 'color', config, cardTitle);
+                } catch (e) {
+                  console.error(e);
+                  alert('Unable to export PDF pattern.');
+                }
+              }}
+              className="px-3 py-2 bg-[#E06C38] hover:bg-[#d05c28] text-white text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-xs"
+              title="Download PDF pattern chart"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Download PDF</span>
+            </button>
+
+            <button
+              onClick={onClose}
+              className="p-2 rounded-xl text-[#6B7869] hover:text-[#1D231E] hover:bg-[#FAF6EE] transition-colors cursor-pointer border border-[#E8E1D2]"
+              title="Close pattern viewer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Progress Summary Bar */}
@@ -385,29 +427,31 @@ export const StitchTrackerModal: React.FC<StitchTrackerModalProps> = ({
               </div>
 
               <div className="relative min-h-[360px] max-h-[500px] overflow-auto bg-[#FAF6EE] border border-[#E0D8C8] rounded-xl flex items-center justify-center p-4">
-                {loadingPattern ? (
-                  <div className="flex flex-col items-center justify-center p-8 text-center text-[#5A6659]">
+                {loadingPattern && (
+                  <div className="absolute inset-0 z-10 bg-[#FAF6EE]/90 backdrop-blur-xs flex flex-col items-center justify-center p-8 text-center text-[#5A6659]">
                     <Loader2 className="w-8 h-8 text-[#E06C38] animate-spin mb-3" />
-                    <span className="text-xs font-bold">Loading pattern grid for stitch tracker...</span>
+                    <span className="text-xs font-bold">Rendering pattern chart...</span>
                   </div>
-                ) : pattern ? (
+                )}
+
+                {pattern ? (
                   <div 
                     style={{ transform: `scale(${zoomLevel})`, transformOrigin: 'center center' }}
                     className="transition-transform duration-200"
                   >
                     <canvas
-                      ref={canvasRef}
+                      ref={setCanvasRef}
                       onClick={handleCanvasClick}
                       className={`rounded shadow-md border border-[#1D231E]/20 transition-all ${
                         viewMode === 'tracker' ? 'cursor-pointer hover:ring-2 hover:ring-[#E06C38]' : ''
                       }`}
                     />
                   </div>
-                ) : (
+                ) : !loadingPattern ? (
                   <div className="text-center p-6 text-[#5A6659] text-xs">
                     Failed to load pattern chart for tracking.
                   </div>
-                )}
+                ) : null}
               </div>
 
             </div>

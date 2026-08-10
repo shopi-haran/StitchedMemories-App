@@ -507,45 +507,23 @@ export async function fetchUserProfile(userId?: string, userEmail?: string): Pro
   let profile = (data as SupabaseProfileRow | null) || null;
 
   const normalizedEmail = (userEmail || '').toLowerCase();
-  const isNxusWaveOrShopi = normalizedEmail === 'info.nxuswave@gmail.com' || normalizedEmail === 'shopi.haran@gmail.com' || normalizedEmail === '';
 
   if (!profile) {
     profile = { 
       email: userEmail || 'info.nxuswave@gmail.com', 
-      display_name: normalizedEmail.includes('nxuswave') ? 'Shopi Test' : 'Shopi Haran',
+      display_name: normalizedEmail.includes('nxuswave') ? 'NxusWave User' : 'Shopi Haran',
       subscription_tier: 'studio' 
     };
   }
 
-  // Check Local Storage Overrides
-  try {
-    const globalOverride = localStorage.getItem('user_tier_global');
-    let activeOverride = globalOverride;
-    
-    if (!activeOverride && userEmail) {
-      activeOverride = localStorage.getItem(`user_tier_${userEmail.toLowerCase()}`);
-    }
-    if (!activeOverride) {
-      activeOverride = localStorage.getItem('user_tier_info.nxuswave@gmail.com') || localStorage.getItem('user_tier_shopi.haran@gmail.com');
-    }
-
-    if (activeOverride && (activeOverride === 'free' || activeOverride === 'pro' || activeOverride === 'studio')) {
-      if (profile) {
-        profile.subscription_tier = activeOverride;
-      } else {
-        profile = { email: userEmail || 'info.nxuswave@gmail.com', subscription_tier: activeOverride };
-      }
-    } else if (isNxusWaveOrShopi) {
-      if (profile) {
-        profile.subscription_tier = 'studio';
-      }
-      try {
-        localStorage.setItem(`user_tier_info.nxuswave@gmail.com`, 'studio');
-        localStorage.setItem(`user_tier_${normalizedEmail || 'info.nxuswave@gmail.com'}`, 'studio');
-        localStorage.setItem('user_tier_global', 'studio');
-      } catch {}
-    }
-  } catch {}
+  // Force info.nxuswave@gmail.com and default accounts to Studio Tier
+  if (normalizedEmail === 'info.nxuswave@gmail.com' || normalizedEmail === 'shopi.haran@gmail.com' || !normalizedEmail) {
+    profile.subscription_tier = 'studio';
+    try {
+      localStorage.setItem('user_tier_info.nxuswave@gmail.com', 'studio');
+      localStorage.setItem('user_tier_global', 'studio');
+    } catch {}
+  }
 
   return profile;
 }

@@ -117,11 +117,13 @@ export const MyPatternsTab: React.FC<MyPatternsTabProps> = ({ user, onOpenConver
   };
 
   const getJobPhotoUrl = (job: SupabaseConversionJobRow) => {
-    if (job.thumbnail_url) return job.thumbnail_url;
-    if (job.photo_url) return job.photo_url;
+    if (job.thumbnail_url && job.thumbnail_url.length > 10) return job.thumbnail_url;
+    if (job.photo_url && job.photo_url.length > 10 && !job.photo_url.startsWith('blob:')) return job.photo_url;
     try {
-      const cached = localStorage.getItem(`user_pattern_img_${job.user_id}_${job.title}`);
-      if (cached) return cached;
+      const cachedByUser = localStorage.getItem(`user_pattern_img_${job.user_id}_${job.title}`);
+      if (cachedByUser) return cachedByUser;
+      const cachedByTitle = localStorage.getItem(`user_pattern_img_${job.title}`);
+      if (cachedByTitle) return cachedByTitle;
     } catch {}
     return dogImg;
   };

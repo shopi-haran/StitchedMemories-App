@@ -11,7 +11,8 @@ import {
   GeneratedPattern,
   FABRIC_COUNTS,
   generatePatternFromImage,
-  renderPatternCanvas
+  renderPatternCanvas,
+  createScaledThumbnail
 } from '../utils/patternEngine';
 import { exportPatternToPDF } from '../utils/pdfExporter';
 import { fetchUserProfile, saveUserConversionJob } from '../lib/supabase';
@@ -288,6 +289,14 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
         const patternKey = `${userIdToSave}_${customPhotoName}_${result.widthStitches}x${result.heightStitches}_${result.flossList.length}`;
         if (lastSavedPatternKeyRef.current !== patternKey) {
           lastSavedPatternKeyRef.current = patternKey;
+
+          let compactThumb = '';
+          try {
+            compactThumb = await createScaledThumbnail(selectedPhotoUrl, 250);
+          } catch {
+            compactThumb = selectedPhotoUrl;
+          }
+
           saveUserConversionJob({
             user_id: userIdToSave,
             title: customPhotoName || 'Converted Pattern',
@@ -296,6 +305,7 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
             grid_height: result.heightStitches,
             colors_count: result.flossList.length,
             photo_url: selectedPhotoUrl,
+            thumbnail_url: compactThumb,
           });
         }
       }

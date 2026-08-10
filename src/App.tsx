@@ -16,7 +16,6 @@ import { DashboardPage, DashboardTab } from './pages/DashboardPage';
 import { LoginPage } from './pages/LoginPage';
 import { AuthModal } from './components/AuthModal';
 import { PaymentGatewayModal } from './components/PaymentGatewayModal';
-import { DevTierSwitcher } from './components/DevTierSwitcher';
 import { supabase, fetchUserProfile } from './lib/supabase';
 
 export type PageName = 'home' | 'about-contact' | 'blog' | 'shop' | 'dashboard' | 'login';
@@ -415,9 +414,6 @@ export default function App() {
         user={user}
         onPaymentSuccess={handlePaymentSuccess}
       />
-
-      {/* Dev-Only Tier Switcher (Only visible for shopi.haran@gmail.com) */}
-      <DevTierSwitcher user={user} />
 
       {/* Floating Back to Top Button */}
       <BackToTop />

@@ -19,7 +19,6 @@ import { MyPatternsTab } from '../components/dashboard/MyPatternsTab';
 import { PurchasesTab } from '../components/dashboard/PurchasesTab';
 import { CustomOrdersTab } from '../components/dashboard/CustomOrdersTab';
 import { ProfileTab } from '../components/dashboard/ProfileTab';
-import { DevTierSwitcher } from '../components/dashboard/DevTierSwitcher';
 import { fetchUserProfile } from '../lib/supabase';
 
 interface UserProfile {
@@ -137,7 +136,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <DevTierSwitcher user={user} />
             <button
               onClick={onOpenConverter}
               className="px-4 py-2 bg-[#E06C38] hover:bg-[#d05c28] text-white text-xs font-bold rounded-full transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
