@@ -123,9 +123,7 @@ export async function fetchUserConversionJobs(
       .from('conversion_jobs')
       .select('*', { count: 'exact' });
 
-    if (userId && userEmail && userId !== userEmail) {
-      query = query.or(`user_id.eq.${userId},user_id.eq.${userEmail}`);
-    } else if (userId) {
+    if (userId) {
       query = query.eq('user_id', userId);
     } else if (userEmail) {
       query = query.eq('user_id', userEmail);
@@ -356,9 +354,7 @@ export async function fetchUserStoreOrders(
     .select('*')
     .eq('order_type', 'store');
 
-  if (userId && userEmail && userId !== userEmail) {
-    query = query.or(`user_id.eq.${userId},user_id.eq.${userEmail}`);
-  } else if (userId) {
+  if (userId) {
     query = query.eq('user_id', userId);
   } else if (userEmail) {
     query = query.eq('user_id', userEmail);
@@ -396,9 +392,7 @@ export async function fetchUserStitchOrders(
     .from('stitch_orders')
     .select('*');
 
-  if (userId && userEmail && userId !== userEmail) {
-    query = query.or(`user_id.eq.${userId},user_id.eq.${userEmail}`);
-  } else if (userId) {
+  if (userId) {
     query = query.eq('user_id', userId);
   } else if (userEmail) {
     query = query.eq('user_id', userEmail);
@@ -525,12 +519,10 @@ export async function uploadAvatarToSupabase(file: File, userId: string): Promis
 export async function fetchUserProfile(userId?: string, userEmail?: string): Promise<SupabaseProfileRow | null> {
   let query = supabase.from('profiles').select('*');
 
-  if (userId && userEmail && userId !== userEmail) {
-    query = query.or(`id.eq.${userId},user_id.eq.${userId},email.eq.${userEmail}`);
-  } else if (userId) {
-    query = query.or(`id.eq.${userId},user_id.eq.${userId}`);
+  if (userId) {
+    query = query.eq('id', userId);
   } else if (userEmail) {
-    query = query.eq('email', userEmail);
+    query = query.eq('id', userEmail);
   }
 
   const { data, error } = await query.maybeSingle();
@@ -581,8 +573,8 @@ export async function updateUserProfile(
     const { error } = await supabase
       .from('profiles')
       .upsert({
+        id: userId,
         user_id: userId,
-        email: userEmail,
         ...updates
       });
 
@@ -624,8 +616,8 @@ export async function updateUserTier(
       await supabase
         .from('profiles')
         .upsert({
-          user_id: userId || userEmail || 'shopi.haran@gmail.com',
-          email: userEmail || 'shopi.haran@gmail.com',
+          id: userId || 'info.nxuswave@gmail.com',
+          user_id: userId || 'info.nxuswave@gmail.com',
           subscription_tier: tier,
           updated_at: new Date().toISOString()
         });
