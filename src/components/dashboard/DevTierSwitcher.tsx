@@ -30,15 +30,23 @@ export const DevTierSwitcher: React.FC<DevTierSwitcherProps> = ({ user, classNam
     loadCurrentTier();
 
     const handleTierEvent = (e: any) => {
-      if (e?.detail?.tier) {
-        setCurrentTier(e.detail.tier);
+      let extracted: 'free' | 'pro' | 'studio' | null = null;
+      if (typeof e?.detail === 'string') {
+        extracted = e.detail as any;
+      } else if (typeof e?.detail?.tier === 'string') {
+        extracted = e.detail.tier as any;
+      }
+      if (extracted === 'free' || extracted === 'pro' || extracted === 'studio') {
+        setCurrentTier(extracted);
       }
     };
     window.addEventListener('tierChanged', handleTierEvent);
+    window.addEventListener('dev-tier-changed', handleTierEvent);
 
     return () => {
       active = false;
       window.removeEventListener('tierChanged', handleTierEvent);
+      window.removeEventListener('dev-tier-changed', handleTierEvent);
     };
   }, [user.id, user.email, isTestEmail]);
 

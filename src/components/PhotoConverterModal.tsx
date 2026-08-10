@@ -43,45 +43,53 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
   useEffect(() => {
     let active = true;
     const syncUserTier = async () => {
-      if (!user && !localStorage.getItem('user_tier_shopi.haran@gmail.com')) {
-        if (active) {
-          setUserTier('free');
-          setPlanTier('free');
-        }
-        return;
-      }
+      let targetTier: 'free' | 'pro' | 'studio' | null = null;
+
+      // 1. Check local storage overrides first
       try {
-        const emailToUse = user?.email || 'shopi.haran@gmail.com';
-        const idToUse = user?.id || emailToUse;
-        const profile = await fetchUserProfile(idToUse, emailToUse);
-        const rawTier = (profile?.subscription_tier || '').toLowerCase();
-        let targetTier: 'free' | 'pro' | 'studio' = 'free';
-        if (rawTier.includes('studio')) {
-          targetTier = 'studio';
-        } else if (rawTier.includes('pro')) {
-          targetTier = 'pro';
-        } else {
+        const globalOverride = localStorage.getItem('user_tier_global');
+        if (globalOverride === 'free' || globalOverride === 'pro' || globalOverride === 'studio') {
+          targetTier = globalOverride;
+        }
+
+        if (!targetTier && user?.email) {
+          const userOverride = localStorage.getItem(`user_tier_${user.email.toLowerCase()}`);
+          if (userOverride === 'free' || userOverride === 'pro' || userOverride === 'studio') {
+            targetTier = userOverride;
+          }
+        }
+
+        if (!targetTier) {
+          const defaultOverride = localStorage.getItem('user_tier_shopi.haran@gmail.com');
+          if (defaultOverride === 'free' || defaultOverride === 'pro' || defaultOverride === 'studio') {
+            targetTier = defaultOverride;
+          }
+        }
+      } catch {}
+
+      // 2. Fetch from Supabase profile if no local override found
+      if (!targetTier) {
+        try {
+          const emailToUse = user?.email || 'shopi.haran@gmail.com';
+          const idToUse = user?.id || emailToUse;
+          const profile = await fetchUserProfile(idToUse, emailToUse);
+          const rawTier = (profile?.subscription_tier || '').toLowerCase();
+          if (rawTier.includes('studio')) {
+            targetTier = 'studio';
+          } else if (rawTier.includes('pro')) {
+            targetTier = 'pro';
+          } else {
+            targetTier = 'free';
+          }
+        } catch (err) {
+          console.error('Error fetching user profile for converter tier:', err);
           targetTier = 'free';
         }
+      }
 
-        // Check local override
-        try {
-          const localTier = localStorage.getItem(`user_tier_${emailToUse.toLowerCase()}`);
-          if (localTier === 'pro' || localTier === 'studio' || localTier === 'free') {
-            targetTier = localTier;
-          }
-        } catch {}
-
-        if (active) {
-          setUserTier(targetTier);
-          setPlanTier(targetTier);
-        }
-      } catch (err) {
-        console.error('Error fetching user profile for converter tier:', err);
-        if (active) {
-          setUserTier('free');
-          setPlanTier('free');
-        }
+      if (active && targetTier) {
+        setUserTier(targetTier);
+        setPlanTier(targetTier);
       }
     };
 

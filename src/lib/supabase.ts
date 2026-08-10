@@ -382,31 +382,30 @@ export async function fetchUserProfile(userId?: string, userEmail?: string): Pro
 
   let profile = (data as SupabaseProfileRow | null) || null;
 
-  if (!profile && userEmail) {
-    profile = { email: userEmail, subscription_tier: 'free' };
+  if (!profile) {
+    profile = { email: userEmail || 'shopi.haran@gmail.com', subscription_tier: 'free' };
   }
 
-  if (userEmail) {
-    try {
-      const localTier = localStorage.getItem(`user_tier_${userEmail.toLowerCase()}`);
-      if (localTier && (localTier === 'free' || localTier === 'pro' || localTier === 'studio')) {
-        if (profile) {
-          profile.subscription_tier = localTier;
-        } else {
-          profile = { email: userEmail, subscription_tier: localTier };
-        }
+  // Check Local Storage Overrides
+  try {
+    const globalOverride = localStorage.getItem('user_tier_global');
+    let activeOverride = globalOverride;
+    
+    if (!activeOverride && userEmail) {
+      activeOverride = localStorage.getItem(`user_tier_${userEmail.toLowerCase()}`);
+    }
+    if (!activeOverride) {
+      activeOverride = localStorage.getItem('user_tier_shopi.haran@gmail.com');
+    }
+
+    if (activeOverride && (activeOverride === 'free' || activeOverride === 'pro' || activeOverride === 'studio')) {
+      if (profile) {
+        profile.subscription_tier = activeOverride;
+      } else {
+        profile = { email: userEmail || 'shopi.haran@gmail.com', subscription_tier: activeOverride };
       }
-    } catch {}
-  } else {
-    try {
-      const testLocalTier = localStorage.getItem(`user_tier_shopi.haran@gmail.com`);
-      if (testLocalTier && (testLocalTier === 'free' || testLocalTier === 'pro' || testLocalTier === 'studio')) {
-        if (profile) {
-          profile.subscription_tier = testLocalTier;
-        }
-      }
-    } catch {}
-  }
+    }
+  } catch {}
 
   return profile;
 }
@@ -451,53 +450,51 @@ export async function updateUserTier(
   userEmail: string,
   tier: 'free' | 'pro' | 'studio'
 ): Promise<boolean> {
-  if (userEmail) {
-    try {
-      localStorage.setItem(`user_tier_${userEmail.toLowerCase()}`, tier);
-    } catch {}
-  }
-
-  const existing = await fetchUserProfile(userId, userEmail);
-
-  if (existing && existing.id) {
-    const { error } = await supabase
-      .from('profiles')
-      .update({ subscription_tier: tier, updated_at: new Date().toISOString() })
-      .eq('id', existing.id);
-
-    if (error) {
-      console.error('Error updating tier in Supabase:', error);
-    }
-  } else {
-    const { error } = await supabase
-      .from('profiles')
-      .upsert({
-        user_id: userId || userEmail,
-        email: userEmail,
-        subscription_tier: tier,
-        updated_at: new Date().toISOString()
-      });
-
-    if (error) {
-      console.error('Error upserting tier in Supabase:', error);
-    }
-  }
-
-  // Also sync user_profiles table if present
+  // Synchronously update local storage and dispatch events immediately
   try {
+    localStorage.setItem('user_tier_global', tier);
+    if (userEmail) {
+      localStorage.setItem(`user_tier_${userEmail.toLowerCase()}`, tier);
+    }
+    localStorage.setItem('user_tier_shopi.haran@gmail.com', tier);
+  } catch {}
+
+  window.dispatchEvent(new CustomEvent('dev-tier-changed', { detail: tier }));
+  window.dispatchEvent(new CustomEvent('tierChanged', { detail: { tier } }));
+
+  try {
+    const existing = await fetchUserProfile(userId, userEmail);
+
+    if (existing && existing.id) {
+      await supabase
+        .from('profiles')
+        .update({ subscription_tier: tier, updated_at: new Date().toISOString() })
+        .eq('id', existing.id);
+    } else {
+      await supabase
+        .from('profiles')
+        .upsert({
+          user_id: userId || userEmail || 'shopi.haran@gmail.com',
+          email: userEmail || 'shopi.haran@gmail.com',
+          subscription_tier: tier,
+          updated_at: new Date().toISOString()
+        });
+    }
+
+    // Also sync user_profiles table if present
     if (userId || userEmail) {
       await supabase.from('user_profiles').upsert([
         {
-          id: userId || userEmail,
+          id: userId || userEmail || 'shopi.haran@gmail.com',
           subscription_tier: tier,
           updated_at: new Date().toISOString(),
         }
       ]);
     }
-  } catch {}
+  } catch (err) {
+    console.error('Error updating tier in Supabase:', err);
+  }
 
-  window.dispatchEvent(new CustomEvent('tierChanged', { detail: { tier } }));
-  window.dispatchEvent(new CustomEvent('dev-tier-changed', { detail: tier }));
   return true;
 }
 
