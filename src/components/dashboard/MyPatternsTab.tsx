@@ -12,6 +12,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { fetchUserConversionJobs, SupabaseConversionJobRow } from '../../lib/supabase';
+import { StitchTrackerModal } from './StitchTrackerModal';
 
 interface UserProfile {
   id?: string;
@@ -31,6 +32,22 @@ export const MyPatternsTab: React.FC<MyPatternsTabProps> = ({ user, onOpenConver
   const [page, setPage] = useState<number>(0);
   const [totalCount, setTotalCount] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
+  const [selectedTrackerJob, setSelectedTrackerJob] = useState<SupabaseConversionJobRow | null>(null);
+
+  const getJobProgressCount = (jobId: string | number) => {
+    try {
+      const saved = localStorage.getItem(`stitch_tracker_job_${jobId}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return parsed.length;
+        }
+      }
+    } catch {
+      return 0;
+    }
+    return 0;
+  };
 
   const PAGE_SIZE = 10;
 
@@ -251,10 +268,28 @@ export const MyPatternsTab: React.FC<MyPatternsTabProps> = ({ user, onOpenConver
                       </div>
 
                       {(job.grid_width || job.colors_count) && (
-                        <div className="flex items-center gap-2 mt-2 text-[11px] font-semibold text-[#5A6659]">
-                          {job.grid_width && <span>{job.grid_width}×{job.grid_height || job.grid_width} Stitches</span>}
-                          {job.grid_width && job.colors_count && <span>•</span>}
-                          {job.colors_count && <span>{job.colors_count} DMC Colors</span>}
+                        <div className="flex flex-col gap-1 mt-2 text-[11px]">
+                          <div className="flex items-center gap-2 font-semibold text-[#5A6659]">
+                            {job.grid_width && <span>{job.grid_width}×{job.grid_height || job.grid_width} Stitches</span>}
+                            {job.grid_width && job.colors_count && <span>•</span>}
+                            {job.colors_count && <span>{job.colors_count} DMC Colors</span>}
+                          </div>
+
+                          {/* Progress Badge if stitching tracked */}
+                          {(() => {
+                            const doneCount = getJobProgressCount(job.id);
+                            if (doneCount > 0) {
+                              const totalSts = (job.grid_width || 60) * (job.grid_height || 60);
+                              const pct = Math.min(100, Math.round((doneCount / totalSts) * 100));
+                              return (
+                                <div className="flex items-center gap-1.5 font-bold text-[#3D5239] bg-[#E8EFE5] px-2 py-0.5 rounded-md w-fit border border-[#C5D3C2] text-[10px]">
+                                  <CheckCircle2 className="w-3 h-3 text-[#E06C38]" />
+                                  <span>{pct}% Stitched ({doneCount.toLocaleString()} sts)</span>
+                                </div>
+                              );
+                            }
+                            return null;
+                          })()}
                         </div>
                       )}
                     </div>
@@ -262,24 +297,35 @@ export const MyPatternsTab: React.FC<MyPatternsTabProps> = ({ user, onOpenConver
                   </div>
 
                   {/* Actions / Status Indicators */}
-                  <div className="pt-3 border-t border-[#E8E1D2]/80 flex items-center justify-between">
+                  <div className="pt-3 border-t border-[#E8E1D2]/80 flex flex-col sm:flex-row items-center gap-2">
                     
                     {isComplete ? (
-                      <a
-                        href={job.pattern_pdf_url || '#'}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => {
-                          if (!job.pattern_pdf_url) {
-                            e.preventDefault();
-                            alert('PDF chart URL is preparing. Please check back shortly.');
-                          }
-                        }}
-                        className="w-full py-2.5 px-4 bg-[#E06C38] hover:bg-[#d05c28] text-white text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2 shadow-xs"
-                      >
-                        <Download className="w-4 h-4" />
-                        <span>Download PDF Chart</span>
-                      </a>
+                      <>
+                        <button
+                          onClick={() => setSelectedTrackerJob(job)}
+                          className="w-full sm:w-1/2 py-2 px-3 bg-[#3D5239] hover:bg-[#2C3B29] text-white text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
+                          title="Open Interactive Stitch Progress Tracker"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5 text-[#E06C38]" />
+                          <span>Track Progress</span>
+                        </button>
+
+                        <a
+                          href={job.pattern_pdf_url || '#'}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => {
+                            if (!job.pattern_pdf_url) {
+                              e.preventDefault();
+                              alert('PDF chart URL is preparing. Please check back shortly.');
+                            }
+                          }}
+                          className="w-full sm:w-1/2 py-2 px-3 bg-[#E06C38] hover:bg-[#d05c28] text-white text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          <span>PDF Chart</span>
+                        </a>
+                      </>
                     ) : isProcessing ? (
                       <div className="w-full py-2.5 px-4 bg-amber-50/80 border border-amber-200 text-amber-800 text-xs font-semibold rounded-xl flex items-center justify-center gap-2">
                         <Loader2 className="w-4 h-4 animate-spin text-amber-600" />
@@ -340,6 +386,15 @@ export const MyPatternsTab: React.FC<MyPatternsTabProps> = ({ user, onOpenConver
             <span>Launch Stitchly</span>
           </button>
         </div>
+      )}
+
+      {/* Interactive Stitch Tracker Modal for Dashboard Pattern Jobs */}
+      {selectedTrackerJob && (
+        <StitchTrackerModal
+          isOpen={Boolean(selectedTrackerJob)}
+          onClose={() => setSelectedTrackerJob(null)}
+          job={selectedTrackerJob}
+        />
       )}
 
     </div>

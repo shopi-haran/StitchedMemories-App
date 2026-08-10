@@ -216,8 +216,8 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
     setOrderPlaced(true);
   };
 
-  // View Mode: 'color' (Color Chart), 'symbol' (B&W Printable Chart), 'tracker' (Stitch Progress Tracker)
-  const [viewMode, setViewMode] = useState<'color' | 'symbol' | 'tracker'>('color');
+  // View Mode: 'color' (Color Chart), 'symbol' (B&W Printable Chart)
+  const [viewMode, setViewMode] = useState<'color' | 'symbol'>('color');
 
   // Processing & Generated Pattern
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
@@ -345,11 +345,10 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
         canvasRef.current,
         pattern,
         viewMode,
-        config,
-        completedStitches
+        config
       );
     }
-  }, [pattern, viewMode, showGridLines, showSymbolsOnColor, completedStitches, planTier]);
+  }, [pattern, viewMode, showGridLines, showSymbolsOnColor, planTier]);
 
   if (!isOpen) return null;
 
@@ -897,7 +896,6 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
                   <Eye className="w-3.5 h-3.5 text-[#E06C38]" />
                   <span>Color Pattern</span>
                 </button>
-
                 <button
                   onClick={() => setViewMode('symbol')}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
@@ -906,23 +904,6 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
                 >
                   <Download className="w-3.5 h-3.5 text-[#1D231E]" />
                   <span>Printable Symbol Chart (B&W)</span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    if (planTier === 'free') {
-                      alert('Interactive Stitch Tracker is available on Pro & Studio Plans! Switch plan mode above to test.');
-                      return;
-                    }
-                    setViewMode('tracker');
-                  }}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                    viewMode === 'tracker' ? 'bg-[#3D5239] text-white shadow-xs' : 'text-[#5A6659]'
-                  }`}
-                >
-                  <CheckCircle2 className="w-3.5 h-3.5 text-[#E06C38]" />
-                  <span>Stitch Tracker</span>
-                  {planTier === 'free' && <Lock className="w-2.5 h-2.5 text-[#E06C38]" />}
                 </button>
               </div>
 
@@ -942,34 +923,16 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
                 <span className="font-bold text-[#1D231E]">
                   {viewMode === 'color' && 'Full Color DMC Pattern Chart'}
                   {viewMode === 'symbol' && 'Black & White Symbol Chart (Print-Ready)'}
-                  {viewMode === 'tracker' && 'Interactive Stitching Progress Tracker'}
                 </span>
-
-                {viewMode === 'tracker' && pattern && (
-                  <span className="text-[11px] font-bold text-[#3D5239] bg-[#E8EFE5] px-2.5 py-1 rounded-full">
-                    Completed: {completedStitches.size} / {pattern.totalStitches} stitches ({Math.round((completedStitches.size / pattern.totalStitches) * 100)}%)
-                  </span>
-                )}
               </div>
 
               {/* Canvas viewport */}
               <div className="relative flex-1 min-h-[320px] rounded-xl overflow-auto bg-[#FAF6EE] border border-[#E0D8C8] flex items-center justify-center p-4 group">
                 {selectedPhotoUrl && pattern ? (
-                  <>
-                    <canvas
-                      ref={canvasRef}
-                      onClick={handleCanvasClick}
-                      className={`max-w-full max-h-[420px] rounded shadow-md border border-[#1D231E]/20 transition-all ${
-                        viewMode === 'tracker' ? 'cursor-pointer hover:ring-2 hover:ring-[#E06C38]' : ''
-                      }`}
-                    />
-
-                    {viewMode === 'tracker' && (
-                      <div className="absolute bottom-2 left-2 bg-black/70 text-white text-[10px] px-2 py-1 rounded-md backdrop-blur-xs pointer-events-none">
-                        Click any stitch cell to toggle completed status (✓)
-                      </div>
-                    )}
-                  </>
+                  <canvas
+                    ref={canvasRef}
+                    className="max-w-full max-h-[420px] rounded shadow-md border border-[#1D231E]/20 transition-all"
+                  />
                 ) : isProcessing ? (
                   <div className="flex flex-col items-center justify-center p-8 text-center text-[#505C4F]">
                     <RefreshCw className="w-8 h-8 text-[#E06C38] animate-spin mb-3" />
