@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase, fetchUserProfile, migrateGuestConversionJobs } from '../lib/supabase';
 
@@ -19,9 +19,6 @@ interface AuthContextType {
   refreshProfile: () => Promise<void>;
 }
 
-const INACTIVITY_LIMIT_MS = 5 * 60 * 1000; // 5 minutes inactivity
-const LAST_ACTIVE_KEY = 'stitched_memories_last_active';
-
 const AuthContext = createContext<AuthContextType>({
   session: null,
   user: null,
@@ -38,45 +35,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [rawUser, setRawUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  const lastActivityRef = useRef<number>(Date.now());
-
-  const checkInactivityExpired = (): boolean => {
-    try {
-      const stored = localStorage.getItem(LAST_ACTIVE_KEY);
-      if (stored) {
-        const lastActiveTime = Number(stored);
-        if (!isNaN(lastActiveTime) && Date.now() - lastActiveTime >= INACTIVITY_LIMIT_MS) {
-          return true;
-        }
-      }
-    } catch {}
-    return false;
-  };
-
-  const updateActivityTime = () => {
-    const now = Date.now();
-    lastActivityRef.current = now;
-    try {
-      localStorage.setItem(LAST_ACTIVE_KEY, String(now));
-    } catch {}
-  };
-
   const syncUserFromSession = async (sess: Session | null) => {
     if (sess?.user) {
-      // Check if user was inactive for 5 minutes prior to reload/action
-      if (checkInactivityExpired()) {
-        console.log('[AuthContext] User was inactive for >= 5 minutes. Logging out automatically.');
-        try {
-          localStorage.removeItem(LAST_ACTIVE_KEY);
-          await supabase.auth.signOut();
-        } catch {}
-        setSession(null);
-        setRawUser(null);
-        setUser(null);
-        return;
-      }
-
-      updateActivityTime();
       setSession(sess);
       setRawUser(sess.user);
 
@@ -117,22 +77,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setSession(null);
       setRawUser(null);
       setUser(null);
-      try {
-        localStorage.removeItem(LAST_ACTIVE_KEY);
-      } catch {}
     }
   };
 
   useEffect(() => {
     let isMounted = true;
 
-    // Requirement 3: Console.log window.location.hash and getSession() as first thing on mount
+    // Log URL parameters and initial session
     console.log('[AuthContext Mount] window.location.href:', window.location.href);
     console.log('[AuthContext Mount] window.location.hash:', window.location.hash);
     console.log('[AuthContext Mount] window.location.search:', window.location.search);
 
     const initAuth = async () => {
-      // Requirement 4: Explicitly parse and handle URL tokens/code if present
+      // Parse and handle URL tokens/code if present (e.g. OAuth redirects)
       const hash = window.location.hash;
       const search = window.location.search;
 
@@ -209,44 +166,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  // 5-minute inactivity tracking listener while logged in
-  useEffect(() => {
-    if (!session) return;
-
-    let lastWriteTime = 0;
-    const handleUserActivity = () => {
-      const now = Date.now();
-      lastActivityRef.current = now;
-      // Throttle localStorage updates to at most once every 3 seconds
-      if (now - lastWriteTime > 3000) {
-        lastWriteTime = now;
-        try {
-          localStorage.setItem(LAST_ACTIVE_KEY, String(now));
-        } catch {}
-      }
-    };
-
-    const events = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
-    events.forEach((evt) => window.addEventListener(evt, handleUserActivity, { passive: true }));
-
-    // Check inactivity every 5 seconds
-    const interval = setInterval(() => {
-      const now = Date.now();
-      if (now - lastActivityRef.current >= INACTIVITY_LIMIT_MS) {
-        console.log('[AuthContext] 5 minutes inactivity limit reached. Logging out user.');
-        signOut();
-      }
-    }, 5000);
-
-    return () => {
-      events.forEach((evt) => window.removeEventListener(evt, handleUserActivity));
-      clearInterval(interval);
-    };
-  }, [session]);
-
   const signOut = async () => {
     try {
-      localStorage.removeItem(LAST_ACTIVE_KEY);
       await supabase.auth.signOut();
     } catch (err) {
       console.error('[AuthContext] signOut error:', err);
@@ -258,7 +179,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await syncUserFromSession(currentSession);
   };
 
-  // Crucial: isLoggedIn is strictly boolean !!session derived directly from real session
+  // isLoggedIn is strictly derived from active session
   const isLoggedIn = !!session;
 
   return (

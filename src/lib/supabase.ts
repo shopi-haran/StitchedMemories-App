@@ -347,41 +347,45 @@ export async function saveUserConversionJob(jobData: {
   });
 
   // Align insert user_id with session.user.id when an active session exists so RLS (auth.uid() = user_id) passes
-  const effectiveUserId = session?.user?.id || jobData.user_id;
+  const effectiveUserId = session?.user?.id || (jobData.user_id !== 'guest' ? jobData.user_id : null);
 
-  const insertPayload = {
-    user_id: effectiveUserId,
-    title: jobData.title || 'Converted Pattern',
-    status: jobData.status || 'complete',
-    grid_width: jobData.grid_width || 60,
-    grid_height: jobData.grid_height || 60,
-    colors_count: jobData.colors_count || 18,
-    photo_url: finalPhoto.length < 250000 ? finalPhoto : '',
-    thumbnail_url: jobData.thumbnail_url || (finalThumb.length < 100000 ? finalThumb : ''),
-    original_image_url: jobData.original_image_url || '',
-    pattern_pdf_url: jobData.pattern_pdf_url || '',
-    pattern_preview_url: jobData.pattern_preview_url || '',
-    created_at: new Date().toISOString(),
-  };
+  if (effectiveUserId) {
+    const insertPayload = {
+      user_id: effectiveUserId,
+      title: jobData.title || 'Converted Pattern',
+      status: jobData.status || 'complete',
+      grid_width: jobData.grid_width || 60,
+      grid_height: jobData.grid_height || 60,
+      colors_count: jobData.colors_count || 18,
+      photo_url: finalPhoto.length < 250000 ? finalPhoto : '',
+      thumbnail_url: jobData.thumbnail_url || (finalThumb.length < 100000 ? finalThumb : ''),
+      original_image_url: jobData.original_image_url || '',
+      pattern_pdf_url: jobData.pattern_pdf_url || '',
+      pattern_preview_url: jobData.pattern_preview_url || '',
+      created_at: new Date().toISOString(),
+    };
 
-  console.log('[saveUserConversionJob] Executing Supabase insert for conversion_jobs:', insertPayload);
+    console.log('[saveUserConversionJob] Executing Supabase insert for conversion_jobs:', insertPayload);
 
-  // Persist to Supabase database
-  try {
-    const { data, error } = await supabase.from('conversion_jobs').insert([insertPayload]).select();
+    // Persist to Supabase database
+    try {
+      const { data, error } = await supabase.from('conversion_jobs').insert([insertPayload]).select();
 
-    if (error) {
-      console.error('[saveUserConversionJob] Supabase insert error for conversion_jobs:', {
-        code: error.code,
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-      });
-    } else {
-      console.log('[saveUserConversionJob] Supabase insert succeeded for conversion_jobs:', data);
+      if (error) {
+        console.error('[saveUserConversionJob] Supabase insert error for conversion_jobs:', {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+        });
+      } else {
+        console.log('[saveUserConversionJob] Supabase insert succeeded for conversion_jobs:', data);
+      }
+    } catch (err) {
+      console.error('[saveUserConversionJob] Supabase insert exception:', err);
     }
-  } catch (err) {
-    console.error('[saveUserConversionJob] Supabase insert exception:', err);
+  } else {
+    console.log('[saveUserConversionJob] Guest user session - saved job to local storage cache only.');
   }
 
   try {
