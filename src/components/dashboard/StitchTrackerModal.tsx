@@ -79,18 +79,19 @@ export const StitchTrackerModal: React.FC<StitchTrackerModalProps> = ({
 
     const initPattern = async () => {
       try {
-        let photoUrl = job.pattern_preview_url || job.original_image_url || job.photo_url || job.thumbnail_url || '';
-        if (!photoUrl || photoUrl.length < 5 || photoUrl.startsWith('blob:')) {
+        // Use full original source photo for pattern matrix generation (never feed chart preview PNG to generatePatternFromImage)
+        let sourcePhotoUrl = job.original_image_url || job.photo_url || job.thumbnail_url || '';
+        if (!sourcePhotoUrl || sourcePhotoUrl.length < 5 || sourcePhotoUrl.startsWith('blob:')) {
           try {
             const cachedPhoto = localStorage.getItem(`user_pattern_photo_${job.title}`);
             const cachedImgUser = localStorage.getItem(`user_pattern_img_${job.user_id}_${job.title}`);
             const cachedImgTitle = localStorage.getItem(`user_pattern_img_${job.title}`);
             const cachedThumb = localStorage.getItem(`user_pattern_thumb_${job.title}`);
-            photoUrl = cachedPhoto || cachedImgUser || cachedImgTitle || cachedThumb || photoUrl || '';
+            sourcePhotoUrl = cachedPhoto || cachedImgUser || cachedImgTitle || cachedThumb || sourcePhotoUrl || '';
           } catch {}
         }
-        if (!photoUrl || photoUrl.startsWith('blob:')) {
-          photoUrl = dogImg;
+        if (!sourcePhotoUrl || sourcePhotoUrl.startsWith('blob:')) {
+          sourcePhotoUrl = dogImg;
         }
 
         const config: PatternConfig = {
@@ -105,7 +106,7 @@ export const StitchTrackerModal: React.FC<StitchTrackerModalProps> = ({
         };
 
         try {
-          const result = await generatePatternFromImage(photoUrl, config);
+          const result = await generatePatternFromImage(sourcePhotoUrl, config);
           if (isMounted) {
             setPattern(result);
           }

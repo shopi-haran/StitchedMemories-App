@@ -373,69 +373,83 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
         colors_count: pattern.flossList.length,
         photo_url: scaledPhoto,
         thumbnail_url: compactThumb,
-        original_image_url: '',
+        original_image_url: originalPhotoUrl || selectedPhotoUrl || '',
         pattern_pdf_url: '',
         pattern_preview_url: '',
       };
 
-      if (isAuthenticated) {
-        // 1. Upload original photo submitted by user to conversion-results storage bucket
-        try {
-          console.log('[ConversionSave] Uploading original submitted photo to Supabase conversion-results storage bucket...');
-          const uploadedOrig = await uploadOriginalPhotoToSupabase(originalPhotoUrl || selectedPhotoUrl, customPhotoName || 'Converted Pattern', userIdToSave);
-          if (uploadedOrig) {
-            uploadedOriginalUrl = uploadedOrig;
-            jobData.original_image_url = uploadedOriginalUrl;
-            console.log('[ConversionSave] Assigned original_image_url to jobData:', uploadedOriginalUrl);
+      // Generate standalone PNG stitch chart image (with symbols & grid lines)
+      try {
+        console.log('[ConversionSave] Rendering standalone PNG stitch chart image for pattern_preview_url...');
+        const previewPngDataUrl = generatePrintableImage(pattern, 'color', {
+          ...config,
+          showSymbols: true,
+          showGridLines: true,
+        });
+        if (previewPngDataUrl) {
+          if (previewPngDataUrl.length < 250000) {
+            jobData.pattern_preview_url = previewPngDataUrl;
           }
-        } catch (origErr) {
-          console.error('[ConversionSave] Error uploading original photo to storage:', origErr);
+          try {
+            localStorage.setItem(`user_pattern_preview_${customPhotoName || 'Converted Pattern'}`, previewPngDataUrl);
+          } catch {}
         }
 
-        // 2. Generate pattern PDF with DMC symbol chart & color key and upload to conversion-results storage bucket
-        try {
-          console.log('[ConversionSave] Generating pattern PDF blob for storage upload...');
-          const pdfBlob = await generatePatternPDFBlob(pattern, 'color', config, customPhotoName || 'Converted Pattern');
-          console.log('[ConversionSave] Uploading PDF blob to Supabase conversion-results storage bucket...');
-          const uploadedPdf = await uploadPDFToSupabase(pdfBlob, customPhotoName || 'Converted Pattern', userIdToSave);
-          if (uploadedPdf) {
-            pdfUrl = uploadedPdf;
-            jobData.pattern_pdf_url = pdfUrl;
+        if (isAuthenticated) {
+          // 1. Upload original photo submitted by user to conversion-results storage bucket
+          try {
+            console.log('[ConversionSave] Uploading original submitted photo to Supabase conversion-results storage bucket...');
+            const uploadedOrig = await uploadOriginalPhotoToSupabase(originalPhotoUrl || selectedPhotoUrl, customPhotoName || 'Converted Pattern', userIdToSave);
+            if (uploadedOrig) {
+              uploadedOriginalUrl = uploadedOrig;
+              jobData.original_image_url = uploadedOriginalUrl;
+              console.log('[ConversionSave] Assigned original_image_url to jobData:', uploadedOriginalUrl);
+            }
+          } catch (origErr) {
+            console.error('[ConversionSave] Error uploading original photo to storage:', origErr);
           }
-        } catch (pdfErr) {
-          console.error('[ConversionSave] Error generating or uploading pattern PDF:', pdfErr);
-        }
 
-        // 3. Upload thumbnail to storage bucket
-        try {
-          const uploadedThumb = await uploadThumbnailToSupabase(compactThumb || scaledPhoto, customPhotoName || 'Converted Pattern', userIdToSave);
-          if (uploadedThumb) {
-            uploadedThumbUrl = uploadedThumb;
-            jobData.photo_url = uploadedThumbUrl;
-            jobData.thumbnail_url = uploadedThumbUrl;
+          // 2. Generate pattern PDF with DMC symbol chart & color key and upload to conversion-results storage bucket
+          try {
+            console.log('[ConversionSave] Generating pattern PDF blob for storage upload...');
+            const pdfBlob = await generatePatternPDFBlob(pattern, 'color', config, customPhotoName || 'Converted Pattern');
+            console.log('[ConversionSave] Uploading PDF blob to Supabase conversion-results storage bucket...');
+            const uploadedPdf = await uploadPDFToSupabase(pdfBlob, customPhotoName || 'Converted Pattern', userIdToSave);
+            if (uploadedPdf) {
+              pdfUrl = uploadedPdf;
+              jobData.pattern_pdf_url = pdfUrl;
+            }
+          } catch (pdfErr) {
+            console.error('[ConversionSave] Error generating or uploading pattern PDF:', pdfErr);
           }
-        } catch (thumbErr) {
-          console.error('[ConversionSave] Error uploading thumbnail to storage:', thumbErr);
-        }
 
-        // 4. Render standalone PNG stitch chart image (with symbols & grid lines) and upload to conversion-results storage bucket
-        try {
-          console.log('[ConversionSave] Rendering standalone PNG stitch chart image for pattern_preview_url...');
-          const previewPngDataUrl = generatePrintableImage(pattern, 'color', {
-            ...config,
-            showSymbols: true,
-            showGridLines: true,
-          });
-          console.log('[ConversionSave] Uploading pattern preview PNG to Supabase conversion-results storage bucket...');
-          const uploadedPrev = await uploadPatternPreviewToSupabase(previewPngDataUrl, customPhotoName || 'Converted Pattern', userIdToSave);
-          if (uploadedPrev) {
-            uploadedPreviewUrl = uploadedPrev;
-            jobData.pattern_preview_url = uploadedPreviewUrl;
-            console.log('[ConversionSave] Assigned pattern_preview_url to jobData:', uploadedPreviewUrl);
+          // 3. Upload thumbnail to storage bucket
+          try {
+            const uploadedThumb = await uploadThumbnailToSupabase(compactThumb || scaledPhoto, customPhotoName || 'Converted Pattern', userIdToSave);
+            if (uploadedThumb) {
+              uploadedThumbUrl = uploadedThumb;
+              jobData.photo_url = uploadedThumbUrl;
+              jobData.thumbnail_url = uploadedThumbUrl;
+            }
+          } catch (thumbErr) {
+            console.error('[ConversionSave] Error uploading thumbnail to storage:', thumbErr);
           }
-        } catch (prevErr) {
-          console.error('[ConversionSave] Error generating or uploading pattern preview PNG:', prevErr);
+
+          // 4. Upload standalone PNG pattern preview to Supabase storage bucket
+          try {
+            console.log('[ConversionSave] Uploading pattern preview PNG to Supabase conversion-results storage bucket...');
+            const uploadedPrev = await uploadPatternPreviewToSupabase(previewPngDataUrl, customPhotoName || 'Converted Pattern', userIdToSave);
+            if (uploadedPrev) {
+              uploadedPreviewUrl = uploadedPrev;
+              jobData.pattern_preview_url = uploadedPreviewUrl;
+              console.log('[ConversionSave] Assigned pattern_preview_url to jobData:', uploadedPreviewUrl);
+            }
+          } catch (prevErr) {
+            console.error('[ConversionSave] Error uploading pattern preview PNG:', prevErr);
+          }
         }
+      } catch (genErr) {
+        console.error('[ConversionSave] Error preparing standalone pattern preview:', genErr);
       }
 
       console.log('[ConversionSave] Invoking saveUserConversionJob with parameters:', jobData);
