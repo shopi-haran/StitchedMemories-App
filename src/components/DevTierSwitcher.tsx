@@ -13,7 +13,7 @@ export const DevTierSwitcher: React.FC<DevTierSwitcherProps> = ({ user }) => {
   const [toastMsg, setToastMsg] = useState('');
 
   const emailLower = user?.email?.toLowerCase() || '';
-  const isTargetUser = emailLower === 'info.nxuswave@gmail.com' || emailLower === 'shopi.haran@gmail.com';
+  const isTargetUser = emailLower === 'info.nxuswave@gmail.com';
 
   useEffect(() => {
     if (!isTargetUser || !user) return;

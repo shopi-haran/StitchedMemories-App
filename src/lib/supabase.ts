@@ -181,7 +181,7 @@ export async function fetchUserConversionJobs(
     const defaultSampleJobs: SupabaseConversionJobRow[] = [
       {
         id: 'sample_job_1',
-        user_id: userId || userEmail || 'shopi.haran@gmail.com',
+        user_id: userId || userEmail || 'info.nxuswave@gmail.com',
         title: 'Hoop Dog Portrait Cross-Stitch',
         status: 'complete',
         grid_width: 60,
@@ -192,7 +192,7 @@ export async function fetchUserConversionJobs(
       },
       {
         id: 'sample_job_2',
-        user_id: userId || userEmail || 'shopi.haran@gmail.com',
+        user_id: userId || userEmail || 'info.nxuswave@gmail.com',
         title: 'Spring Wildflowers Embroidery Pattern',
         status: 'complete',
         grid_width: 80,
@@ -746,13 +746,13 @@ export async function fetchUserProfile(userId?: string, userEmail?: string): Pro
   if (!profile) {
     profile = { 
       email: userEmail || 'info.nxuswave@gmail.com', 
-      display_name: normalizedEmail.includes('nxuswave') ? 'NxusWave User' : 'Shopi Haran',
-      subscription_tier: 'studio' 
+      display_name: normalizedEmail.includes('nxuswave') ? 'NxusWave User' : (userEmail ? userEmail.split('@')[0] : 'Crafter'),
+      subscription_tier: normalizedEmail === 'info.nxuswave@gmail.com' ? 'studio' : 'free'
     };
   }
 
-  // Force info.nxuswave@gmail.com and default accounts to Studio Tier
-  if (normalizedEmail === 'info.nxuswave@gmail.com' || normalizedEmail === 'shopi.haran@gmail.com' || !normalizedEmail) {
+  // Force info.nxuswave@gmail.com to Studio Tier
+  if (normalizedEmail === 'info.nxuswave@gmail.com') {
     profile.subscription_tier = 'studio';
     try {
       localStorage.setItem('user_tier_info.nxuswave@gmail.com', 'studio');
@@ -810,7 +810,6 @@ export async function updateUserTier(
       localStorage.setItem(`user_tier_${userEmail.toLowerCase()}`, tier);
     }
     localStorage.setItem('user_tier_info.nxuswave@gmail.com', tier);
-    localStorage.setItem('user_tier_shopi.haran@gmail.com', tier);
   } catch {}
 
   window.dispatchEvent(new CustomEvent('dev-tier-changed', { detail: tier }));
@@ -839,7 +838,7 @@ export async function updateUserTier(
     if (userId || userEmail) {
       await supabase.from('user_profiles').upsert([
         {
-          id: userId || userEmail || 'shopi.haran@gmail.com',
+          id: userId || userEmail || 'info.nxuswave@gmail.com',
           subscription_tier: tier,
           updated_at: new Date().toISOString(),
         }

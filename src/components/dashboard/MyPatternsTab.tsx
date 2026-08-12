@@ -58,7 +58,7 @@ export const MyPatternsTab: React.FC<MyPatternsTabProps> = ({ user, onOpenConver
             return;
           }
         }
-        const defaultOverride = localStorage.getItem('user_tier_info.nxuswave@gmail.com') || localStorage.getItem('user_tier_shopi.haran@gmail.com');
+        const defaultOverride = localStorage.getItem('user_tier_info.nxuswave@gmail.com');
         if (defaultOverride === 'free' || defaultOverride === 'pro' || defaultOverride === 'studio') {
           if (active) setPlanTier(defaultOverride);
           return;
