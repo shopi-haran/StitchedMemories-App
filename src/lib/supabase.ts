@@ -738,14 +738,9 @@ export async function uploadOriginalPhotoToSupabase(imageSrc: string, fileName: 
   try {
     if (!imageSrc) return null;
     let blob: Blob;
-    if (imageSrc.startsWith('data:')) {
+    if (imageSrc.startsWith('data:') || imageSrc.startsWith('blob:') || imageSrc.startsWith('http')) {
       const resp = await fetch(imageSrc);
       blob = await resp.blob();
-    } else if (imageSrc.startsWith('blob:')) {
-      const resp = await fetch(imageSrc);
-      blob = await resp.blob();
-    } else if (imageSrc.startsWith('http')) {
-      return imageSrc;
     } else {
       return null;
     }
@@ -755,6 +750,7 @@ export async function uploadOriginalPhotoToSupabase(imageSrc: string, fileName: 
       hasSession: !!session,
       sessionUserId: session?.user?.id,
       sessionUserEmail: session?.user?.email,
+      hasAccessToken: !!session?.access_token,
       paramUserId: userId,
     });
 
@@ -785,7 +781,7 @@ export async function uploadOriginalPhotoToSupabase(imageSrc: string, fileName: 
       return null;
     }
 
-    console.log('[uploadOriginalPhotoToSupabase] Storage upload succeeded for original photo:', data);
+    console.log('[uploadOriginalPhotoToSupabase] Storage upload succeeded:', data);
 
     const { data: publicUrlData } = supabase.storage
       .from('conversion-results')

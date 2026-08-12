@@ -325,13 +325,28 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
         let uploadedThumbUrl = '';
         let uploadedOriginalUrl = '';
 
+        const jobData = {
+          user_id: userIdToSave,
+          title: customPhotoName || 'Converted Pattern',
+          status: 'complete',
+          grid_width: result.widthStitches,
+          grid_height: result.heightStitches,
+          colors_count: result.flossList.length,
+          photo_url: scaledPhoto,
+          thumbnail_url: compactThumb,
+          original_image_url: '',
+          pattern_pdf_url: '',
+        };
+
         if (isAuthenticated) {
           // 1. Upload original photo submitted by user to conversion-results storage bucket
           try {
             console.log('[ConversionSave] Uploading original submitted photo to Supabase conversion-results storage bucket...');
-            const uploadedOrig = await uploadOriginalPhotoToSupabase(selectedPhotoUrl, customPhotoName || 'Converted Pattern', userIdToSave);
+            const uploadedOrig = await uploadOriginalPhotoToSupabase(originalPhotoUrl || selectedPhotoUrl, customPhotoName || 'Converted Pattern', userIdToSave);
             if (uploadedOrig) {
               uploadedOriginalUrl = uploadedOrig;
+              jobData.original_image_url = uploadedOriginalUrl;
+              console.log('[ConversionSave] Assigned original_image_url to jobData:', uploadedOriginalUrl);
             }
           } catch (origErr) {
             console.error('[ConversionSave] Error uploading original photo to storage:', origErr);
@@ -345,6 +360,7 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
             const uploadedPdf = await uploadPDFToSupabase(pdfBlob, customPhotoName || 'Converted Pattern', userIdToSave);
             if (uploadedPdf) {
               pdfUrl = uploadedPdf;
+              jobData.pattern_pdf_url = pdfUrl;
             }
           } catch (pdfErr) {
             console.error('[ConversionSave] Error generating or uploading pattern PDF:', pdfErr);
@@ -355,37 +371,17 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
             const uploadedThumb = await uploadThumbnailToSupabase(compactThumb || scaledPhoto, customPhotoName || 'Converted Pattern', userIdToSave);
             if (uploadedThumb) {
               uploadedThumbUrl = uploadedThumb;
+              jobData.photo_url = uploadedThumbUrl;
+              jobData.thumbnail_url = uploadedThumbUrl;
             }
           } catch (thumbErr) {
             console.error('[ConversionSave] Error uploading thumbnail to storage:', thumbErr);
           }
         }
 
-        console.log('[ConversionSave] Invoking saveUserConversionJob with parameters:', {
-          user_id: userIdToSave,
-          title: customPhotoName || 'Converted Pattern',
-          status: 'complete',
-          grid_width: result.widthStitches,
-          grid_height: result.heightStitches,
-          colors_count: result.flossList.length,
-          photo_url: uploadedThumbUrl || scaledPhoto,
-          thumbnail_url: uploadedThumbUrl || compactThumb,
-          original_image_url: uploadedOriginalUrl || '',
-          pattern_pdf_url: pdfUrl,
-        });
+        console.log('[ConversionSave] Invoking saveUserConversionJob with parameters:', jobData);
 
-        const saveSuccess = await saveUserConversionJob({
-          user_id: userIdToSave,
-          title: customPhotoName || 'Converted Pattern',
-          status: 'complete',
-          grid_width: result.widthStitches,
-          grid_height: result.heightStitches,
-          colors_count: result.flossList.length,
-          photo_url: uploadedThumbUrl || scaledPhoto,
-          thumbnail_url: uploadedThumbUrl || compactThumb,
-          original_image_url: uploadedOriginalUrl || '',
-          pattern_pdf_url: pdfUrl,
-        });
+        const saveSuccess = await saveUserConversionJob(jobData);
 
         console.log('[ConversionSave] saveUserConversionJob finished. Result:', saveSuccess);
       } else {
