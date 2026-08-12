@@ -21,7 +21,7 @@ import { useAuth } from './context/AuthContext';
 export type PageName = 'home' | 'about-contact' | 'blog' | 'shop' | 'dashboard' | 'login';
 
 export default function App() {
-  const { user, isLoggedIn, signOut: authSignOut, refreshProfile } = useAuth();
+  const { user, isLoggedIn, isLoading, signOut: authSignOut, refreshProfile } = useAuth();
 
   const [currentPage, setCurrentPage] = useState<PageName>('home');
   const [dashboardTab, setDashboardTab] = useState<DashboardTab>('overview');
@@ -36,6 +36,8 @@ export default function App() {
 
   // Sync initial URL pathname and popstate history
   useEffect(() => {
+    if (isLoading) return; // Do not redirect while session restoration is pending
+
     const handleUrlSync = () => {
       const path = window.location.pathname.toLowerCase();
       if (path.startsWith('/dashboard')) {
@@ -68,7 +70,7 @@ export default function App() {
     handleUrlSync();
     window.addEventListener('popstate', handleUrlSync);
     return () => window.removeEventListener('popstate', handleUrlSync);
-  }, [isLoggedIn]);
+  }, [isLoggedIn, isLoading]);
 
   const handleSelectPlanFromPricing = (plan: 'free' | 'pro' | 'studio', cycle: 'monthly' | 'annual') => {
     setPricingPlan(plan);

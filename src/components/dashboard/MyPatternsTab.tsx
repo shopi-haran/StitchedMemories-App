@@ -14,6 +14,8 @@ import {
   Eye
 } from 'lucide-react';
 import { fetchUserConversionJobs, fetchUserProfile, SupabaseConversionJobRow } from '../../lib/supabase';
+import { generatePatternFromImage, PatternConfig } from '../../utils/patternEngine';
+import { exportPatternToPDF } from '../../utils/pdfExporter';
 import { StitchTrackerModal } from './StitchTrackerModal';
 import dogImg from '../../assets/images/hoop_dog.png';
 
@@ -36,6 +38,7 @@ export const MyPatternsTab: React.FC<MyPatternsTabProps> = ({ user, onOpenConver
   const [totalCount, setTotalCount] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
   const [selectedTrackerJob, setSelectedTrackerJob] = useState<SupabaseConversionJobRow | null>(null);
+  const [downloadingPdfJobId, setDownloadingPdfJobId] = useState<string | number | null>(null);
   const [planTier, setPlanTier] = useState<'free' | 'pro' | 'studio'>('free');
 
   // Sync plan tier
@@ -168,6 +171,15 @@ export const MyPatternsTab: React.FC<MyPatternsTabProps> = ({ user, onOpenConver
 
   useEffect(() => {
     loadJobs(0, false);
+
+    const handlePatternSaved = () => {
+      loadJobs(0, false);
+    };
+
+    window.addEventListener('patternSaved', handlePatternSaved);
+    return () => {
+      window.removeEventListener('patternSaved', handlePatternSaved);
+    };
   }, [loadJobs]);
 
   const handleLoadMore = () => {
@@ -179,6 +191,43 @@ export const MyPatternsTab: React.FC<MyPatternsTabProps> = ({ user, onOpenConver
   const handleRefresh = () => {
     setPage(0);
     loadJobs(0, false);
+  };
+
+  const handleDownloadPdf = async (job: SupabaseConversionJobRow, e: React.MouseEvent) => {
+    e.preventDefault();
+
+    // If valid PDF URL exists, open it in new tab directly
+    if (job.pattern_pdf_url && (job.pattern_pdf_url.startsWith('http') || job.pattern_pdf_url.startsWith('blob:'))) {
+      window.open(job.pattern_pdf_url, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
+    // Otherwise, generate pattern and PDF chart on-demand
+    setDownloadingPdfJobId(job.id);
+    const cardTitle = job.title || job.title_name || job.filename || `Cross Stitch Chart #${job.id}`;
+
+    try {
+      const photoUrl = getJobPhotoUrl(job);
+      const config: PatternConfig = {
+        gridWidth: job.grid_width || 60,
+        fabricCount: 14,
+        colorLimit: job.colors_count || 18,
+        showGridLines: true,
+        showSymbols: true,
+        brand: 'DMC',
+        isAdFree: true,
+        planTier: 'studio',
+      };
+
+      const pattern = await generatePatternFromImage(photoUrl, config);
+      await exportPatternToPDF(pattern, 'color', config, cardTitle);
+    } catch (err) {
+      console.error('On-demand PDF generation error:', err);
+      // Fallback: Open interactive pattern viewer where user can view and download PDF
+      setSelectedTrackerJob(job);
+    } finally {
+      setDownloadingPdfJobId(null);
+    }
   };
 
   const formatDate = (rawDateStr?: string) => {
@@ -398,22 +447,25 @@ export const MyPatternsTab: React.FC<MyPatternsTabProps> = ({ user, onOpenConver
                           <span>View Pattern</span>
                         </button>
 
-                        <a
-                          href={job.pattern_pdf_url || '#'}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(e) => {
-                            if (!job.pattern_pdf_url) {
-                              e.preventDefault();
-                              alert('PDF chart is preparing. Opening pattern converter...');
-                              onOpenConverter();
-                            }
-                          }}
-                          className="w-full sm:w-1/2 py-2 px-3 bg-[#E06C38] hover:bg-[#d05c28] text-white text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
+                        <button
+                          type="button"
+                          onClick={(e) => handleDownloadPdf(job, e)}
+                          disabled={downloadingPdfJobId === job.id}
+                          className="w-full sm:w-1/2 py-2 px-3 bg-[#E06C38] hover:bg-[#d05c28] text-white text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-xs disabled:opacity-60"
+                          title="Download PDF pattern chart"
                         >
-                          <Download className="w-3.5 h-3.5" />
-                          <span>PDF Chart</span>
-                        </a>
+                          {downloadingPdfJobId === job.id ? (
+                            <>
+                              <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+                              <span>Generating PDF...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Download className="w-3.5 h-3.5" />
+                              <span>PDF Chart</span>
+                            </>
+                          )}
+                        </button>
                       </>
                     ) : isProcessing ? (
                       <div className="w-full py-2.5 px-4 bg-amber-50/80 border border-amber-200 text-amber-800 text-xs font-semibold rounded-xl flex items-center justify-center gap-2">

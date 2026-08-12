@@ -160,9 +160,9 @@ export const Header: React.FC<HeaderProps> = ({
                   className="flex items-center gap-2 pl-2 pr-2.5 py-1.5 bg-white hover:bg-[#F2EFE8] border border-[#E8E1D2] rounded-full shadow-xs transition-all cursor-pointer"
                 >
                   <div className="w-7 h-7 rounded-full bg-[#E06C38]/15 text-[#E06C38] font-bold text-xs flex items-center justify-center overflow-hidden border border-[#E8E1D2] shrink-0">
-                    {(user.avatar_url || user.avatarUrl) ? (
+                    {user.avatar_url ? (
                       <img
-                        src={user.avatar_url || user.avatarUrl}
+                        src={user.avatar_url}
                         alt={user.name}
                         className="w-full h-full object-cover"
                         referrerPolicy="no-referrer"
@@ -186,9 +186,9 @@ export const Header: React.FC<HeaderProps> = ({
                   >
                     <div className="px-4 py-2.5 border-b border-[#E8E1D2]/60 flex items-center gap-2.5">
                       <div className="w-8 h-8 rounded-full bg-[#E06C38]/15 text-[#E06C38] font-bold text-xs flex items-center justify-center overflow-hidden shrink-0 border border-[#E8E1D2]">
-                        {(user.avatar_url || user.avatarUrl) ? (
+                        {user.avatar_url ? (
                           <img
-                            src={user.avatar_url || user.avatarUrl}
+                            src={user.avatar_url}
                             alt={user.name}
                             className="w-full h-full object-cover"
                             referrerPolicy="no-referrer"

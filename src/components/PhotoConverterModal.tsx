@@ -176,9 +176,6 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
-    try {
-      localStorage.clear();
-    } catch {}
   };
 
   const handleConvertAnotherImage = () => {
@@ -221,8 +218,8 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
     setOrderPlaced(true);
   };
 
-  // View Mode: 'color' (Color Chart), 'symbol' (B&W Printable Chart)
-  const [viewMode, setViewMode] = useState<'color' | 'symbol'>('color');
+  // View Mode: 'color' (Color Chart), 'symbol' (B&W Printable Chart), 'tracker' (Interactive Stitch Tracker)
+  const [viewMode, setViewMode] = useState<'color' | 'symbol' | 'tracker'>('color');
 
   // Processing & Generated Pattern
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
@@ -296,13 +293,8 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
         sessionEmail: session?.user?.email,
       });
 
-      // Guard: If session is null or user is not logged in, treat as guest and skip Supabase writes
-      if (!session || !session.user || !isAuthLoggedIn) {
-        console.log('[ConversionSave] User is not authenticated (session is null or guest). Skipping Supabase database and storage writes.');
-        return;
-      }
-
-      const userIdToSave = session.user.id;
+      const isAuthenticated = !!(session?.user && isAuthLoggedIn);
+      const userIdToSave = isAuthenticated ? session.user.id : 'guest';
 
       const patternKey = `${userIdToSave}_${customPhotoName}_${result.widthStitches}x${result.heightStitches}_${result.flossList.length}`;
       if (lastSavedPatternKeyRef.current !== patternKey) {
@@ -329,38 +321,32 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
           }
         }
 
-        // Generate pattern PDF with DMC symbol chart & color key and upload to conversion-results storage bucket
         let pdfUrl = '';
         let uploadedThumbUrl = '';
-        try {
-          console.log('[ConversionSave] Generating pattern PDF blob for storage upload...');
-          const pdfBlob = await generatePatternPDFBlob(result, 'color', config, customPhotoName || 'Converted Pattern');
-          console.log('[ConversionSave] Generated pattern PDF blob, size:', pdfBlob.size, 'bytes');
 
-          console.log('[ConversionSave] Uploading PDF blob to Supabase conversion-results storage bucket...');
-          const uploadedPdf = await uploadPDFToSupabase(pdfBlob, customPhotoName || 'Converted Pattern', userIdToSave);
-          if (uploadedPdf) {
-            pdfUrl = uploadedPdf;
-            console.log('[ConversionSave] PDF uploaded successfully. Public URL:', pdfUrl);
-          } else {
-            console.warn('[ConversionSave] uploadPDFToSupabase returned null URL');
+        if (isAuthenticated) {
+          // Generate pattern PDF with DMC symbol chart & color key and upload to conversion-results storage bucket
+          try {
+            console.log('[ConversionSave] Generating pattern PDF blob for storage upload...');
+            const pdfBlob = await generatePatternPDFBlob(result, 'color', config, customPhotoName || 'Converted Pattern');
+            console.log('[ConversionSave] Uploading PDF blob to Supabase conversion-results storage bucket...');
+            const uploadedPdf = await uploadPDFToSupabase(pdfBlob, customPhotoName || 'Converted Pattern', userIdToSave);
+            if (uploadedPdf) {
+              pdfUrl = uploadedPdf;
+            }
+          } catch (pdfErr) {
+            console.error('[ConversionSave] Error generating or uploading pattern PDF:', pdfErr);
           }
-        } catch (pdfErr) {
-          console.error('[ConversionSave] Error generating or uploading pattern PDF:', pdfErr);
-        }
 
-        // Upload thumbnail to storage bucket alongside PDF
-        try {
-          console.log('[ConversionSave] Uploading thumbnail to Supabase conversion-results storage bucket...');
-          const uploadedThumb = await uploadThumbnailToSupabase(compactThumb || scaledPhoto, customPhotoName || 'Converted Pattern', userIdToSave);
-          if (uploadedThumb) {
-            uploadedThumbUrl = uploadedThumb;
-            console.log('[ConversionSave] Thumbnail uploaded successfully. Public URL:', uploadedThumbUrl);
-          } else {
-            console.warn('[ConversionSave] uploadThumbnailToSupabase returned null URL');
+          // Upload thumbnail to storage bucket
+          try {
+            const uploadedThumb = await uploadThumbnailToSupabase(compactThumb || scaledPhoto, customPhotoName || 'Converted Pattern', userIdToSave);
+            if (uploadedThumb) {
+              uploadedThumbUrl = uploadedThumb;
+            }
+          } catch (thumbErr) {
+            console.error('[ConversionSave] Error uploading thumbnail to storage:', thumbErr);
           }
-        } catch (thumbErr) {
-          console.error('[ConversionSave] Error uploading thumbnail to storage:', thumbErr);
         }
 
         console.log('[ConversionSave] Invoking saveUserConversionJob with parameters:', {
@@ -1291,7 +1277,7 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
                   <div className="flex justify-between items-center text-[#4A544A]">
                     <span className="flex items-center gap-1.5">
                       <Ruler className="w-3.5 h-3.5 text-[#E06C38]" />
-                      <span>Custom {fabricCount}ct Aida Cloth ({((gridWidth / fabricCount) + 4).toFixed(1)}" × {((pattern ? (gridWidth * (pattern.gridHeight / pattern.gridWidth)) : gridWidth) / fabricCount + 4).toFixed(1)}")</span>
+                      <span>Custom {fabricCount}ct Aida Cloth ({((gridWidth / fabricCount) + 4).toFixed(1)}" × {((pattern ? (gridWidth * (pattern.heightStitches / pattern.widthStitches)) : gridWidth) / fabricCount + 4).toFixed(1)}")</span>
                     </span>
                     <span className="font-semibold">$8.50</span>
                   </div>

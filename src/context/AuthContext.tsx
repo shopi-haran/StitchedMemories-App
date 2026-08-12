@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { Session, User } from '@supabase/supabase-js';
-import { supabase, fetchUserProfile } from '../lib/supabase';
+import { supabase, fetchUserProfile, migrateGuestConversionJobs } from '../lib/supabase';
 
 export interface UserProfile {
   id: string;
@@ -19,6 +19,9 @@ interface AuthContextType {
   refreshProfile: () => Promise<void>;
 }
 
+const INACTIVITY_LIMIT_MS = 5 * 60 * 1000; // 5 minutes inactivity
+const LAST_ACTIVE_KEY = 'stitched_memories_last_active';
+
 const AuthContext = createContext<AuthContextType>({
   session: null,
   user: null,
@@ -35,11 +38,53 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [rawUser, setRawUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  const syncUserFromSession = async (sess: Session | null) => {
-    setSession(sess);
-    setRawUser(sess?.user || null);
+  const lastActivityRef = useRef<number>(Date.now());
 
+  const checkInactivityExpired = (): boolean => {
+    try {
+      const stored = localStorage.getItem(LAST_ACTIVE_KEY);
+      if (stored) {
+        const lastActiveTime = Number(stored);
+        if (!isNaN(lastActiveTime) && Date.now() - lastActiveTime >= INACTIVITY_LIMIT_MS) {
+          return true;
+        }
+      }
+    } catch {}
+    return false;
+  };
+
+  const updateActivityTime = () => {
+    const now = Date.now();
+    lastActivityRef.current = now;
+    try {
+      localStorage.setItem(LAST_ACTIVE_KEY, String(now));
+    } catch {}
+  };
+
+  const syncUserFromSession = async (sess: Session | null) => {
     if (sess?.user) {
+      // Check if user was inactive for 5 minutes prior to reload/action
+      if (checkInactivityExpired()) {
+        console.log('[AuthContext] User was inactive for >= 5 minutes. Logging out automatically.');
+        try {
+          localStorage.removeItem(LAST_ACTIVE_KEY);
+          await supabase.auth.signOut();
+        } catch {}
+        setSession(null);
+        setRawUser(null);
+        setUser(null);
+        return;
+      }
+
+      updateActivityTime();
+      setSession(sess);
+      setRawUser(sess.user);
+
+      // Migrate any guest patterns to user account
+      migrateGuestConversionJobs(sess.user.id).catch((err) => {
+        console.error('[AuthContext] Error migrating guest jobs:', err);
+      });
+
       try {
         const profile = await fetchUserProfile(sess.user.id, sess.user.email);
         const displayName =
@@ -69,23 +114,86 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
       }
     } else {
+      setSession(null);
+      setRawUser(null);
       setUser(null);
+      try {
+        localStorage.removeItem(LAST_ACTIVE_KEY);
+      } catch {}
     }
   };
 
   useEffect(() => {
     let isMounted = true;
 
-    // Get initial session directly from Supabase SDK
-    supabase.auth.getSession().then(({ data: { session: initSession } }) => {
-      if (!isMounted) return;
-      syncUserFromSession(initSession).finally(() => {
+    // Requirement 3: Console.log window.location.hash and getSession() as first thing on mount
+    console.log('[AuthContext Mount] window.location.href:', window.location.href);
+    console.log('[AuthContext Mount] window.location.hash:', window.location.hash);
+    console.log('[AuthContext Mount] window.location.search:', window.location.search);
+
+    const initAuth = async () => {
+      // Requirement 4: Explicitly parse and handle URL tokens/code if present
+      const hash = window.location.hash;
+      const search = window.location.search;
+
+      if (hash && (hash.includes('access_token=') || hash.includes('refresh_token='))) {
+        try {
+          console.log('[AuthContext] Access token detected in URL hash. Extracting parameters...');
+          const hashClean = hash.startsWith('#') ? hash.substring(1) : hash;
+          const params = new URLSearchParams(hashClean);
+          const accessToken = params.get('access_token');
+          const refreshToken = params.get('refresh_token');
+
+          if (accessToken && refreshToken) {
+            console.log('[AuthContext] Explicitly setting session from URL tokens...');
+            const { data: setSessData, error: setSessErr } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken,
+            });
+            console.log('[AuthContext] setSession result:', { session: setSessData?.session, error: setSessErr });
+            if (setSessData?.session && isMounted) {
+              await syncUserFromSession(setSessData.session);
+              setIsLoading(false);
+              return;
+            }
+          }
+        } catch (e) {
+          console.error('[AuthContext] Error setting session from hash tokens:', e);
+        }
+      } else if (search && search.includes('code=')) {
+        try {
+          const params = new URLSearchParams(search);
+          const code = params.get('code');
+          if (code) {
+            console.log('[AuthContext] Code detected in URL search. Exchanging code for session...');
+            const { data: exchangeData, error: exchangeErr } = await supabase.auth.exchangeCodeForSession(code);
+            console.log('[AuthContext] exchangeCodeForSession result:', { session: exchangeData?.session, error: exchangeErr });
+            if (exchangeData?.session && isMounted) {
+              await syncUserFromSession(exchangeData.session);
+              setIsLoading(false);
+              return;
+            }
+          }
+        } catch (e) {
+          console.error('[AuthContext] Error exchanging code for session:', e);
+        }
+      }
+
+      // Standard initial session fetch
+      try {
+        const { data: { session: initSession }, error: getSessErr } = await supabase.auth.getSession();
+        console.log('[AuthContext] getSession result:', { initSession, getSessErr });
+        if (isMounted) {
+          await syncUserFromSession(initSession);
+        }
+      } catch (err) {
+        console.error('[AuthContext] getSession error:', err);
+      } finally {
         if (isMounted) setIsLoading(false);
-      });
-    }).catch(err => {
-      console.error('[AuthContext] getSession error:', err);
-      if (isMounted) setIsLoading(false);
-    });
+      }
+    };
+
+    initAuth();
 
     // Listen to Auth State changes (Login, Logout, Refresh, OAuth Redirects)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
@@ -101,8 +209,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
+  // 5-minute inactivity tracking listener while logged in
+  useEffect(() => {
+    if (!session) return;
+
+    let lastWriteTime = 0;
+    const handleUserActivity = () => {
+      const now = Date.now();
+      lastActivityRef.current = now;
+      // Throttle localStorage updates to at most once every 3 seconds
+      if (now - lastWriteTime > 3000) {
+        lastWriteTime = now;
+        try {
+          localStorage.setItem(LAST_ACTIVE_KEY, String(now));
+        } catch {}
+      }
+    };
+
+    const events = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
+    events.forEach((evt) => window.addEventListener(evt, handleUserActivity, { passive: true }));
+
+    // Check inactivity every 5 seconds
+    const interval = setInterval(() => {
+      const now = Date.now();
+      if (now - lastActivityRef.current >= INACTIVITY_LIMIT_MS) {
+        console.log('[AuthContext] 5 minutes inactivity limit reached. Logging out user.');
+        signOut();
+      }
+    }, 5000);
+
+    return () => {
+      events.forEach((evt) => window.removeEventListener(evt, handleUserActivity));
+      clearInterval(interval);
+    };
+  }, [session]);
+
   const signOut = async () => {
     try {
+      localStorage.removeItem(LAST_ACTIVE_KEY);
       await supabase.auth.signOut();
     } catch (err) {
       console.error('[AuthContext] signOut error:', err);

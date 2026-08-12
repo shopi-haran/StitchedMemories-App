@@ -5,7 +5,13 @@ import { createScaledThumbnail } from '../utils/patternEngine';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://flwkfgtjkgcluuphibyp.supabase.co';
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZsd2tmZ3Rqa2djbHV1cGhpYnlwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYxODA0MzgsImV4cCI6MjEwMTc1NjQzOH0.5OCxUr0IU_TSSVuNSHS7UAe-7kFoPEdl77pYWLT4Ir0';
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    detectSessionInUrl: true,
+    persistSession: true,
+    autoRefreshToken: true,
+  },
+});
 
 export interface SupabaseBlogPostRow {
   id: string | number;
@@ -368,7 +374,64 @@ export async function saveUserConversionJob(jobData: {
     console.error('[saveUserConversionJob] Supabase insert exception:', err);
   }
 
+  try {
+    window.dispatchEvent(new CustomEvent('patternSaved'));
+  } catch {}
+
   return true;
+}
+
+export async function migrateGuestConversionJobs(userId: string): Promise<void> {
+  if (!userId) return;
+  try {
+    const raw = localStorage.getItem('stitchly_local_conversion_jobs');
+    if (!raw) return;
+    let list: SupabaseConversionJobRow[] = JSON.parse(raw);
+    if (!Array.isArray(list) || list.length === 0) return;
+
+    let hasChanges = false;
+    const jobsToUpload: SupabaseConversionJobRow[] = [];
+
+    list = list.map((job) => {
+      if (job.user_id === 'guest' || !job.user_id) {
+        hasChanges = true;
+        const updated = { ...job, user_id: userId };
+        jobsToUpload.push(updated);
+        return updated;
+      }
+      return job;
+    });
+
+    if (hasChanges) {
+      localStorage.setItem('stitchly_local_conversion_jobs', JSON.stringify(list));
+      console.log(`[migrateGuestConversionJobs] Migrated ${jobsToUpload.length} guest jobs to user ${userId}`);
+
+      for (const job of jobsToUpload) {
+        try {
+          await supabase.from('conversion_jobs').upsert([
+            {
+              user_id: userId,
+              title: job.title || 'Converted Pattern',
+              status: job.status || 'complete',
+              grid_width: job.grid_width || 60,
+              grid_height: job.grid_height || 60,
+              colors_count: job.colors_count || 18,
+              photo_url: job.photo_url || '',
+              thumbnail_url: job.thumbnail_url || '',
+              pattern_pdf_url: job.pattern_pdf_url || '',
+              created_at: job.created_at || new Date().toISOString(),
+            },
+          ]);
+        } catch (e) {
+          console.error('[migrateGuestConversionJobs] Supabase sync error:', e);
+        }
+      }
+
+      window.dispatchEvent(new CustomEvent('patternSaved'));
+    }
+  } catch (e) {
+    console.error('[migrateGuestConversionJobs] Error migrating guest jobs:', e);
+  }
 }
 
 export interface OrderItem {
