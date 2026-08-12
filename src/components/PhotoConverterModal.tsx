@@ -16,6 +16,7 @@ import {
 } from '../utils/patternEngine';
 import { exportPatternToPDF, generatePatternPDFBlob } from '../utils/pdfExporter';
 import { fetchUserProfile, saveUserConversionJob, uploadPDFToSupabase, uploadThumbnailToSupabase, supabase } from '../lib/supabase';
+import { useAuth } from '../context/AuthContext';
 import { AuthModal } from './AuthModal';
 import { StudioImageEditorModal } from './StudioImageEditorModal';
 import dogImg from '../assets/images/hoop_dog.png';
@@ -27,7 +28,10 @@ interface PhotoConverterModalProps {
   onLoginSuccess?: (user: { id?: string; name: string; email: string; avatar_url?: string }) => void;
 }
 
-export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen, onClose, user, onLoginSuccess }) => {
+export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen, onClose, user: propUser, onLoginSuccess }) => {
+  const { session, isLoggedIn: isAuthLoggedIn, user: authUser } = useAuth();
+  const effectiveUser = authUser || propUser;
+
   // User Tier & Active Plan Tier State (Free, Pro, Studio)
   const [userTier, setUserTier] = useState<'free' | 'pro' | 'studio'>('free');
   const [planTier, setPlanTier] = useState<'free' | 'pro' | 'studio'>('free');
@@ -54,8 +58,8 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
           targetTier = globalOverride;
         }
 
-        if (!targetTier && user?.email) {
-          const userOverride = localStorage.getItem(`user_tier_${user.email.toLowerCase()}`);
+        if (!targetTier && effectiveUser?.email) {
+          const userOverride = localStorage.getItem(`user_tier_${effectiveUser.email.toLowerCase()}`);
           if (userOverride === 'free' || userOverride === 'pro' || userOverride === 'studio') {
             targetTier = userOverride;
           }
@@ -72,8 +76,8 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
       // 2. Fetch from Supabase profile if no local override found
       if (!targetTier) {
         try {
-          const emailToUse = user?.email || 'info.nxuswave@gmail.com';
-          const idToUse = user?.id || emailToUse;
+          const emailToUse = effectiveUser?.email || 'info.nxuswave@gmail.com';
+          const idToUse = effectiveUser?.id || emailToUse;
           const profile = await fetchUserProfile(idToUse, emailToUse);
           const rawTier = (profile?.subscription_tier || '').toLowerCase();
           if (rawTier.includes('studio')) {
@@ -123,7 +127,7 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
       window.removeEventListener('dev-tier-changed', handleTierChange);
       window.removeEventListener('tierChanged', handleTierChange);
     };
-  }, [isOpen, user]);
+  }, [isOpen, effectiveUser]);
 
   // Input Image State
   const [selectedPhotoUrl, setSelectedPhotoUrl] = useState<string>('');
@@ -195,15 +199,15 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
   const [orderRef, setOrderRef] = useState<string>('');
 
   useEffect(() => {
-    if (user) {
-      if (user.name && !customerName) setCustomerName(user.name);
-      if (user.email && !customerEmail) setCustomerEmail(user.email);
+    if (effectiveUser) {
+      if (effectiveUser.name && !customerName) setCustomerName(effectiveUser.name);
+      if (effectiveUser.email && !customerEmail) setCustomerEmail(effectiveUser.email);
     }
-  }, [user]);
+  }, [effectiveUser]);
 
   const handlePlaceOrder = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) {
+    if (!effectiveUser) {
       setAuthModalConfig({
         isOpen: true,
         defaultTab: 'signup',
@@ -285,22 +289,20 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
 
       console.log('[ConversionSave] Pattern generated successfully. Initiating save workflow...');
 
-      const { data: { session: activeSession } } = await supabase.auth.getSession();
-      console.log('[ConversionSave] Active Supabase Auth Session retrieved:', {
-        hasSession: !!activeSession,
-        sessionUserId: activeSession?.user?.id,
-        sessionEmail: activeSession?.user?.email,
-        hasAccessToken: !!activeSession?.access_token,
+      console.log('[ConversionSave] AuthContext check:', {
+        hasSession: !!session,
+        isLoggedIn: isAuthLoggedIn,
+        sessionUserId: session?.user?.id,
+        sessionEmail: session?.user?.email,
       });
 
-      // Save conversion job so it appears in "My Patterns" and Supabase conversion_jobs table
-      const userIdToSave = activeSession?.user?.id || user?.id || user?.email || 'info.nxuswave@gmail.com';
-      console.log('[ConversionSave] User login status check:', {
-        isLoggedIn: !!user || !!activeSession,
-        userId: activeSession?.user?.id || user?.id,
-        userEmail: activeSession?.user?.email || user?.email,
-        resolvedUserIdToSave: userIdToSave,
-      });
+      // Guard: If session is null or user is not logged in, treat as guest and skip Supabase writes
+      if (!session || !session.user || !isAuthLoggedIn) {
+        console.log('[ConversionSave] User is not authenticated (session is null or guest). Skipping Supabase database and storage writes.');
+        return;
+      }
+
+      const userIdToSave = session.user.id;
 
       const patternKey = `${userIdToSave}_${customPhotoName}_${result.widthStitches}x${result.heightStitches}_${result.flossList.length}`;
       if (lastSavedPatternKeyRef.current !== patternKey) {
@@ -451,7 +453,7 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
       return;
     }
     
-    if (!user) {
+    if (!effectiveUser) {
       try {
         const choice = localStorage.getItem('converterGuestChoice');
         if (!choice) {

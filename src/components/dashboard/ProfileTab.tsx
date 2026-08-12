@@ -20,6 +20,7 @@ import {
   uploadAvatarToSupabase, 
   SupabaseProfileRow 
 } from '../../lib/supabase';
+import { useAuth } from '../../context/AuthContext';
 
 interface UserProfile {
   id?: string;
@@ -32,6 +33,7 @@ interface ProfileTabProps {
 }
 
 export const ProfileTab: React.FC<ProfileTabProps> = ({ user }) => {
+  const { refreshProfile } = useAuth();
   // Profile State
   const [profile, setProfile] = useState<SupabaseProfileRow | null>(null);
   const [displayName, setDisplayName] = useState<string>(user.name || '');
@@ -135,15 +137,7 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({ user }) => {
 
       if (success) {
         setProfileSuccessMsg('Profile information saved successfully!');
-        // Update local storage representation if needed
-        try {
-          const stored = localStorage.getItem('stitched_memories_user');
-          if (stored) {
-            const parsed = JSON.parse(stored);
-            parsed.name = displayName;
-            localStorage.setItem('stitched_memories_user', JSON.stringify(parsed));
-          }
-        } catch {}
+        await refreshProfile();
       } else {
         setProfileErrorMsg('Failed to save profile. Please check database permissions.');
       }

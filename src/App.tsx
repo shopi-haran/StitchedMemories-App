@@ -16,26 +16,12 @@ import { DashboardPage, DashboardTab } from './pages/DashboardPage';
 import { LoginPage } from './pages/LoginPage';
 import { AuthModal } from './components/AuthModal';
 import { PaymentGatewayModal } from './components/PaymentGatewayModal';
-import { supabase, fetchUserProfile } from './lib/supabase';
+import { useAuth } from './context/AuthContext';
 
 export type PageName = 'home' | 'about-contact' | 'blog' | 'shop' | 'dashboard' | 'login';
 
 export default function App() {
-  const [user, setUser] = useState<{ id?: string; name: string; email: string; avatar_url?: string } | null>(() => {
-    try {
-      const saved = localStorage.getItem('stitched_memories_user');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed && !parsed.id && parsed.email) {
-          parsed.id = 'usr_' + parsed.email.replace(/[^a-zA-Z0-9]/g, '_');
-        }
-        return parsed;
-      }
-      return null;
-    } catch {
-      return null;
-    }
-  });
+  const { user, isLoggedIn, signOut: authSignOut, refreshProfile } = useAuth();
 
   const [currentPage, setCurrentPage] = useState<PageName>('home');
   const [dashboardTab, setDashboardTab] = useState<DashboardTab>('overview');
@@ -48,69 +34,12 @@ export default function App() {
   const [isPricingAuthModalOpen, setIsPricingAuthModalOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
 
-  // Initialize Supabase Auth state listener
-  useEffect(() => {
-    const syncSessionUser = async (session: any) => {
-      if (session?.user) {
-        const profile = await fetchUserProfile(session.user.id, session.user.email);
-        const displayName = profile?.display_name || session.user.user_metadata?.full_name || session.user.user_metadata?.display_name || session.user.email?.split('@')[0] || 'Crafter';
-        const avatarUrl = profile?.avatar_url || session.user.user_metadata?.avatar_url || '';
-
-        const userObj = {
-          id: session.user.id,
-          name: displayName,
-          email: session.user.email || '',
-          avatar_url: avatarUrl,
-        };
-        setUser(userObj);
-        try {
-          localStorage.setItem('stitched_memories_user', JSON.stringify(userObj));
-        } catch {}
-
-        // If user is logged in and currently on /login or /signup, redirect to /dashboard
-        const path = window.location.pathname.toLowerCase();
-        if (path.startsWith('/login') || path.startsWith('/signin') || path.startsWith('/signup')) {
-          window.history.replaceState({}, '', '/dashboard');
-          setCurrentPage('dashboard');
-        }
-      } else {
-        setUser(null);
-        try {
-          localStorage.removeItem('stitched_memories_user');
-        } catch {}
-
-        // If user is logged out and on /dashboard, redirect to /login
-        const path = window.location.pathname.toLowerCase();
-        if (path.startsWith('/dashboard')) {
-          window.history.replaceState({}, '', '/login');
-          setCurrentPage('login');
-        }
-      }
-    };
-
-    // Check initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        syncSessionUser(session);
-      }
-    });
-
-    // Listen for state changes (e.g., OAuth redirects, sign ins, sign outs)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      syncSessionUser(session);
-    });
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, []);
-
   // Sync initial URL pathname and popstate history
   useEffect(() => {
     const handleUrlSync = () => {
       const path = window.location.pathname.toLowerCase();
       if (path.startsWith('/dashboard')) {
-        if (user) {
+        if (isLoggedIn) {
           setCurrentPage('dashboard');
         } else {
           // Protected route: Redirect logged-out user to /login
@@ -118,7 +47,7 @@ export default function App() {
           setCurrentPage('login');
         }
       } else if (path.startsWith('/login') || path.startsWith('/signin') || path.startsWith('/signup')) {
-        if (user) {
+        if (isLoggedIn) {
           // If already logged in, redirect from /login or /signup to /dashboard
           window.history.replaceState({}, '', '/dashboard');
           setCurrentPage('dashboard');
@@ -139,13 +68,13 @@ export default function App() {
     handleUrlSync();
     window.addEventListener('popstate', handleUrlSync);
     return () => window.removeEventListener('popstate', handleUrlSync);
-  }, [user]);
+  }, [isLoggedIn]);
 
   const handleSelectPlanFromPricing = (plan: 'free' | 'pro' | 'studio', cycle: 'monthly' | 'annual') => {
     setPricingPlan(plan);
     setPricingCycle(cycle);
 
-    if (user) {
+    if (isLoggedIn) {
       if (plan === 'free') {
         setDashboardTab('overview');
         setCurrentPage('dashboard');
@@ -159,13 +88,8 @@ export default function App() {
     }
   };
 
-  const handleLoginSuccess = (userProfile: { id?: string; name: string; email: string; avatar_url?: string }) => {
-    setUser(userProfile);
-    try {
-      localStorage.setItem('stitched_memories_user', JSON.stringify(userProfile));
-    } catch (e) {
-      console.error('Failed to save user to localStorage', e);
-    }
+  const handleLoginSuccess = async (_userProfile?: { id?: string; name: string; email: string; avatar_url?: string }) => {
+    await refreshProfile();
 
     // Check if user clicked Pro or Studio CTA on pricing cards
     if (pricingPlan === 'pro' || pricingPlan === 'studio') {
@@ -190,13 +114,7 @@ export default function App() {
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
-    try {
-      localStorage.removeItem('stitched_memories_user');
-    } catch (e) {
-      console.error('Failed to clear user from localStorage', e);
-    }
+    await authSignOut();
     // If user was on dashboard, redirect to home
     if (currentPage === 'dashboard') {
       setCurrentPage('home');
@@ -206,7 +124,7 @@ export default function App() {
 
   const navigateToPage = (page: PageName, path: string) => {
     // Route protection check for dashboard
-    if (page === 'dashboard' && !user) {
+    if (page === 'dashboard' && !isLoggedIn) {
       window.history.pushState({}, '', '/login');
       setCurrentPage('login');
       window.scrollTo({ top: 0, behavior: 'smooth' });

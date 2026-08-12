@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Sparkles, BookOpen, ShoppingBag, ShoppingCart, Tag, User, LogIn, UserPlus, LogOut, ChevronDown, Check, Info, MessageSquare, LayoutDashboard } from 'lucide-react';
 import { AuthModal } from './AuthModal';
 import { CartDrawer } from './CartDrawer';
+import { useAuth } from '../context/AuthContext';
 
 interface UserProfile {
   name: string;
@@ -26,9 +27,8 @@ export const Header: React.FC<HeaderProps> = ({
   onLoginSuccess: externalLoginSuccess,
   onLogout: externalLogout,
 }) => {
-  // Local state fallbacks if parent doesn't pass user handlers
-  const [internalUser, setInternalUser] = useState<UserProfile | null>(null);
-  const user = externalUser !== undefined ? externalUser : internalUser;
+  const { user: authUser, signOut } = useAuth();
+  const user = externalUser !== undefined ? externalUser : authUser;
 
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authDefaultTab, setAuthDefaultTab] = useState<'login' | 'signup'>('login');
@@ -38,16 +38,14 @@ export const Header: React.FC<HeaderProps> = ({
   const handleLoginSuccess = (userProfile: UserProfile) => {
     if (externalLoginSuccess) {
       externalLoginSuccess(userProfile);
-    } else {
-      setInternalUser(userProfile);
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     if (externalLogout) {
       externalLogout();
     } else {
-      setInternalUser(null);
+      await signOut();
     }
     setIsProfileDropdownOpen(false);
   };
