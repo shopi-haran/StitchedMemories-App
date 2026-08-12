@@ -151,8 +151,8 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
 
   // Reset converter state to defaults for a new conversion session
   const resetSessionState = () => {
-    hasSavedCurrentConversionRef.current = false;
-    saveWorkflowActiveRef.current = false;
+    lastSavedSignatureRef.current = null;
+    isSavingWorkflowRef.current = false;
     setSelectedPhotoUrl('');
     setOriginalPhotoUrl('');
     setCustomPhotoName('');
@@ -261,15 +261,13 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
   const maxAllowedGrid = planTier === 'free' ? 100 : (planTier === 'pro' ? 300 : 400);
   const maxAllowedColors = planTier === 'free' ? 50 : (planTier === 'pro' ? 150 : 250);
 
-  // Track saved conversion job to avoid redundant duplicates
-  const hasSavedCurrentConversionRef = useRef<boolean>(false);
-  const saveWorkflowActiveRef = useRef<boolean>(false);
+  // Track saved conversion job signature to avoid duplicate saves for identical results
+  const lastSavedSignatureRef = useRef<string | null>(null);
+  const isSavingWorkflowRef = useRef<boolean>(false);
 
-  // Generate Pattern Callback
+  // Generate Pattern Callback (Local Preview Only - Does NOT trigger cloud save)
   const processPattern = async () => {
     if (!selectedPhotoUrl) return;
-    if (saveWorkflowActiveRef.current) return;
-    saveWorkflowActiveRef.current = true;
     setIsProcessing(true);
     try {
       const config: PatternConfig = {
@@ -289,21 +287,38 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
 
       const result = await generatePatternFromImage(selectedPhotoUrl, config);
       setPattern(result);
+    } catch (err) {
+      console.error('Pattern processing error:', err);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
-      if (hasSavedCurrentConversionRef.current) {
-        console.log('[ConversionSave] Skipping duplicate save: pattern already saved in this conversion session');
-        return;
-      }
-      hasSavedCurrentConversionRef.current = true;
+  // Generate signature to uniquely identify the current conversion settings and output
+  const getCurrentPatternSignature = () => {
+    if (!pattern) return '';
+    return `${selectedPhotoUrl.substring(0, 100)}_${gridWidth}_${fabricCount}_${colorLimit}_${brand}_${dithering}_${brightness}_${contrast}_${saturation}_${showGridLines}_${showSymbolsOnColor}_${customPhotoName}_${pattern.widthStitches}x${pattern.heightStitches}_${pattern.flossList.length}`;
+  };
 
-      console.log('[ConversionSave] Pattern generated successfully. Initiating single save workflow...');
+  // Triggered ONLY when the user clicks "Download Complete Pattern PDF" or "Order Kit & Supplies"
+  const executeSaveWorkflow = async (): Promise<boolean> => {
+    if (!pattern || !selectedPhotoUrl) return false;
 
-      console.log('[ConversionSave] AuthContext check:', {
-        hasSession: !!session,
-        isLoggedIn: isAuthLoggedIn,
-        sessionUserId: session?.user?.id,
-        sessionEmail: session?.user?.email,
-      });
+    const signature = getCurrentPatternSignature();
+    if (lastSavedSignatureRef.current === signature) {
+      console.log('[ConversionSave] This specific conversion result was already saved in this session. Skipping duplicate save.');
+      return true;
+    }
+
+    if (isSavingWorkflowRef.current) {
+      console.log('[ConversionSave] Save workflow is currently active, awaiting completion...');
+      return false;
+    }
+
+    isSavingWorkflowRef.current = true;
+
+    try {
+      console.log('[ConversionSave] User initiated action. Executing save workflow & storage uploads...');
 
       const isAuthenticated = !!(session?.user && isAuthLoggedIn);
       const userIdToSave = isAuthenticated ? session.user.id : 'guest';
@@ -334,13 +349,28 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
       let uploadedOriginalUrl = '';
       let uploadedPreviewUrl = '';
 
+      const config: PatternConfig = {
+        gridWidth: Math.min(gridWidth, maxAllowedGrid),
+        fabricCount,
+        colorLimit: Math.min(colorLimit, maxAllowedColors),
+        showGridLines,
+        showSymbols: showSymbolsOnColor,
+        brand,
+        dithering,
+        brightness: planTier === 'studio' ? brightness : 0,
+        contrast: planTier === 'studio' ? contrast : 0,
+        saturation: planTier === 'studio' ? saturation : 0,
+        isAdFree: planTier !== 'free',
+        planTier
+      };
+
       const jobData = {
         user_id: userIdToSave,
         title: customPhotoName || 'Converted Pattern',
         status: 'complete',
-        grid_width: result.widthStitches,
-        grid_height: result.heightStitches,
-        colors_count: result.flossList.length,
+        grid_width: pattern.widthStitches,
+        grid_height: pattern.heightStitches,
+        colors_count: pattern.flossList.length,
         photo_url: scaledPhoto,
         thumbnail_url: compactThumb,
         original_image_url: '',
@@ -365,7 +395,7 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
         // 2. Generate pattern PDF with DMC symbol chart & color key and upload to conversion-results storage bucket
         try {
           console.log('[ConversionSave] Generating pattern PDF blob for storage upload...');
-          const pdfBlob = await generatePatternPDFBlob(result, 'color', config, customPhotoName || 'Converted Pattern');
+          const pdfBlob = await generatePatternPDFBlob(pattern, 'color', config, customPhotoName || 'Converted Pattern');
           console.log('[ConversionSave] Uploading PDF blob to Supabase conversion-results storage bucket...');
           const uploadedPdf = await uploadPDFToSupabase(pdfBlob, customPhotoName || 'Converted Pattern', userIdToSave);
           if (uploadedPdf) {
@@ -391,7 +421,7 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
         // 4. Render standalone PNG stitch chart image (with symbols & grid lines) and upload to conversion-results storage bucket
         try {
           console.log('[ConversionSave] Rendering standalone PNG stitch chart image for pattern_preview_url...');
-          const previewPngDataUrl = generatePrintableImage(result, 'color', {
+          const previewPngDataUrl = generatePrintableImage(pattern, 'color', {
             ...config,
             showSymbols: true,
             showGridLines: true,
@@ -412,12 +442,17 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
 
       const saveSuccess = await saveUserConversionJob(jobData);
 
-      console.log('[ConversionSave] saveUserConversionJob finished. Result:', saveSuccess);
+      if (saveSuccess) {
+        lastSavedSignatureRef.current = signature;
+        console.log('[ConversionSave] saveUserConversionJob finished successfully. Signature stored:', signature);
+      }
+
+      return saveSuccess;
     } catch (err) {
-      console.error('Pattern processing error:', err);
+      console.error('[ConversionSave] Exception in save workflow:', err);
+      return false;
     } finally {
-      setIsProcessing(false);
-      saveWorkflowActiveRef.current = false;
+      isSavingWorkflowRef.current = false;
     }
   };
 
@@ -537,6 +572,9 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
     setIsExportingPdf(true);
 
     try {
+      // Trigger save workflow (uploads & Supabase insert) when user clicks "Download Complete Pattern PDF"
+      await executeSaveWorkflow();
+
       const config: PatternConfig = {
         gridWidth,
         fabricCount,
@@ -1241,8 +1279,9 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
 
               <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     if (!pattern) return;
+                    await executeSaveWorkflow();
                     setOrderPlaced(false);
                     setIsOrderModalOpen(true);
                   }}
