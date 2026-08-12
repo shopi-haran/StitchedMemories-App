@@ -13,7 +13,7 @@ import {
   Loader2,
   ListFilter
 } from 'lucide-react';
-import { SupabaseConversionJobRow } from '../../lib/supabase';
+import { SupabaseConversionJobRow, getJobPatternConfig } from '../../lib/supabase';
 import { 
   generatePatternFromImage, 
   renderPatternCanvas, 
@@ -94,16 +94,7 @@ export const StitchTrackerModal: React.FC<StitchTrackerModalProps> = ({
           sourcePhotoUrl = dogImg;
         }
 
-        const config: PatternConfig = {
-          gridWidth: job.grid_width || 60,
-          fabricCount: 14,
-          colorLimit: job.colors_count || 18,
-          showGridLines: true,
-          showSymbols: true,
-          brand: 'DMC',
-          isAdFree: true,
-          planTier: 'studio'
-        };
+        const config = getJobPatternConfig(job);
 
         try {
           const result = await generatePatternFromImage(sourcePhotoUrl, config);
@@ -136,16 +127,7 @@ export const StitchTrackerModal: React.FC<StitchTrackerModalProps> = ({
   // Render pattern on canvas reliably
   const drawCanvas = useCallback(() => {
     if (canvasRef.current && pattern) {
-      const config: PatternConfig = {
-        gridWidth: pattern.widthStitches,
-        fabricCount: 14,
-        colorLimit: pattern.flossList.length,
-        showGridLines: true,
-        showSymbols: true,
-        brand: 'DMC',
-        isAdFree: true,
-        planTier: 'studio'
-      };
+      const config = getJobPatternConfig(job);
 
       renderPatternCanvas(
         canvasRef.current,
@@ -155,7 +137,7 @@ export const StitchTrackerModal: React.FC<StitchTrackerModalProps> = ({
         completedStitches
       );
     }
-  }, [pattern, viewMode, completedStitches]);
+  }, [pattern, viewMode, completedStitches, job]);
 
   // Callback ref guarantees canvas rendering as soon as element mounts
   const setCanvasRef = useCallback((node: HTMLCanvasElement | null) => {
@@ -283,16 +265,7 @@ export const StitchTrackerModal: React.FC<StitchTrackerModalProps> = ({
                 }
                 if (!pattern) return;
                 try {
-                  const config: PatternConfig = {
-                    gridWidth: pattern.widthStitches,
-                    fabricCount: 14,
-                    colorLimit: pattern.flossList.length,
-                    showGridLines: true,
-                    showSymbols: true,
-                    brand: 'DMC',
-                    isAdFree: true,
-                    planTier: 'studio'
-                  };
+                  const config = getJobPatternConfig(job);
                   await exportPatternToPDF(pattern, viewMode === 'symbol' ? 'symbol' : 'color', config, cardTitle);
                 } catch (e) {
                   console.error(e);

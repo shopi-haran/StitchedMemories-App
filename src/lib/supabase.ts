@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { BlogPost, ContentSection } from '../types';
-import { createScaledThumbnail } from '../utils/patternEngine';
+import { createScaledThumbnail, PatternConfig } from '../utils/patternEngine';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://flwkfgtjkgcluuphibyp.supabase.co';
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZsd2tmZ3Rqa2djbHV1cGhpYnlwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYxODA0MzgsImV4cCI6MjEwMTc1NjQzOH0.5OCxUr0IU_TSSVuNSHS7UAe-7kFoPEdl77pYWLT4Ir0';
@@ -106,12 +106,48 @@ export interface SupabaseConversionJobRow {
   original_image_url?: string;
   pattern_pdf_url?: string;
   pattern_preview_url?: string;
+  pattern_config?: PatternConfig | any;
   status: 'complete' | 'processing' | 'failed' | 'pending' | string;
   created_at: string;
   grid_width?: number;
   grid_height?: number;
   colors_count?: number;
   [key: string]: any;
+}
+
+/**
+ * Resolve the PatternConfig object for a given conversion job.
+ * Checks job.pattern_config, then localStorage fallback, then returns sane defaults.
+ */
+export function getJobPatternConfig(job: SupabaseConversionJobRow): PatternConfig {
+  let rawConfig = job.pattern_config;
+  if (typeof rawConfig === 'string') {
+    try {
+      rawConfig = JSON.parse(rawConfig);
+    } catch {}
+  }
+
+  if (!rawConfig || typeof rawConfig !== 'object') {
+    try {
+      const cached = localStorage.getItem(`user_pattern_config_${job.title}`);
+      if (cached) rawConfig = JSON.parse(cached);
+    } catch {}
+  }
+
+  return {
+    gridWidth: rawConfig?.gridWidth || job.grid_width || 60,
+    fabricCount: rawConfig?.fabricCount || 14,
+    colorLimit: rawConfig?.colorLimit || job.colors_count || 18,
+    dithering: rawConfig?.dithering || 'floyd-steinberg',
+    brightness: rawConfig?.brightness ?? 0,
+    contrast: rawConfig?.contrast ?? 0,
+    saturation: rawConfig?.saturation ?? 0,
+    showGridLines: rawConfig?.showGridLines ?? true,
+    showSymbols: rawConfig?.showSymbols ?? true,
+    brand: rawConfig?.brand || 'DMC',
+    isAdFree: rawConfig?.isAdFree ?? true,
+    planTier: rawConfig?.planTier || 'studio',
+  };
 }
 
 export async function fetchUserConversionJobs(
@@ -255,6 +291,7 @@ export async function saveUserConversionJob(jobData: {
     original_image_url: jobData.original_image_url || '',
     pattern_pdf_url: jobData.pattern_pdf_url || '',
     pattern_preview_url: jobData.pattern_preview_url || '',
+    pattern_config: jobData.pattern_config || null,
     created_at: new Date().toISOString(),
   };
 
@@ -298,6 +335,7 @@ export async function saveUserConversionJob(jobData: {
       original_image_url: jobData.original_image_url || '',
       pattern_pdf_url: jobData.pattern_pdf_url || '',
       pattern_preview_url: jobData.pattern_preview_url || '',
+      pattern_config: jobData.pattern_config || null,
       created_at: new Date().toISOString(),
     };
 
@@ -371,6 +409,7 @@ export async function migrateGuestConversionJobs(userId: string): Promise<void> 
               original_image_url: job.original_image_url || '',
               pattern_pdf_url: job.pattern_pdf_url || '',
               pattern_preview_url: job.pattern_preview_url || '',
+              pattern_config: job.pattern_config || null,
               created_at: job.created_at || new Date().toISOString(),
             },
           ]);

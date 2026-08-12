@@ -376,7 +376,12 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
         original_image_url: originalPhotoUrl || selectedPhotoUrl || '',
         pattern_pdf_url: '',
         pattern_preview_url: '',
+        pattern_config: config,
       };
+
+      try {
+        localStorage.setItem(`user_pattern_config_${customPhotoName || 'Converted Pattern'}`, JSON.stringify(config));
+      } catch {}
 
       // Generate standalone PNG stitch chart image (with symbols & grid lines)
       try {

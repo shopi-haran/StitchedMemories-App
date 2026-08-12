@@ -13,7 +13,7 @@ import {
   Lock,
   Eye
 } from 'lucide-react';
-import { fetchUserConversionJobs, fetchUserProfile, SupabaseConversionJobRow } from '../../lib/supabase';
+import { fetchUserConversionJobs, fetchUserProfile, SupabaseConversionJobRow, getJobPatternConfig } from '../../lib/supabase';
 import { generatePatternFromImage, PatternConfig } from '../../utils/patternEngine';
 import { exportPatternToPDF, previewPatternPDF, downloadFileFromUrl } from '../../utils/pdfExporter';
 import { StitchTrackerModal } from './StitchTrackerModal';
@@ -216,16 +216,7 @@ export const MyPatternsTab: React.FC<MyPatternsTabProps> = ({ user, onOpenConver
 
     try {
       const photoUrl = getJobPhotoUrl(job);
-      const config: PatternConfig = {
-        gridWidth: job.grid_width || 60,
-        fabricCount: 14,
-        colorLimit: job.colors_count || 18,
-        showGridLines: true,
-        showSymbols: true,
-        brand: 'DMC',
-        isAdFree: true,
-        planTier: 'studio',
-      };
+      const config = getJobPatternConfig(job);
 
       const pattern = await generatePatternFromImage(photoUrl, config);
       await previewPatternPDF(pattern, 'color', config, cardTitle, previewTab);
