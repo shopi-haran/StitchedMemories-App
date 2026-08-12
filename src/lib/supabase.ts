@@ -148,73 +148,9 @@ export async function fetchUserConversionJobs(
     console.error('Error querying Supabase conversion_jobs:', err);
   }
 
-  // Load locally saved conversion jobs from localStorage
-  let localJobs: SupabaseConversionJobRow[] = [];
-  try {
-    const rawLocal = localStorage.getItem('stitchly_local_conversion_jobs');
-    if (rawLocal) {
-      const parsed = JSON.parse(rawLocal);
-      if (Array.isArray(parsed)) {
-        localJobs = parsed.filter((item: any) => {
-          if (!userId && !userEmail) return true;
-          return item.user_id === userId || item.user_id === userEmail || item.user_id === 'guest' || !item.user_id;
-        });
-      }
-    }
-  } catch (e) {
-    console.error('Error reading local conversion jobs:', e);
-  }
-
-  // Combine Supabase jobs and local jobs, avoiding duplicates
-  const combinedMap = new Map<string, SupabaseConversionJobRow>();
-  supabaseJobs.forEach(job => {
-    combinedMap.set(String(job.id || job.title), job);
-  });
-  localJobs.forEach(job => {
-    if (!combinedMap.has(String(job.id || job.title))) {
-      combinedMap.set(String(job.id || job.title), job);
-    }
-  });
-
-  let allJobs = Array.from(combinedMap.values());
-
-  // Default sample patterns if no patterns saved yet for test user
-  if (allJobs.length === 0) {
-    const defaultSampleJobs: SupabaseConversionJobRow[] = [
-      {
-        id: 'sample_job_1',
-        user_id: userId || userEmail || 'info.nxuswave@gmail.com',
-        title: 'Hoop Dog Portrait Cross-Stitch',
-        status: 'complete',
-        grid_width: 60,
-        grid_height: 60,
-        colors_count: 18,
-        created_at: new Date(Date.now() - 3600000 * 24).toISOString(),
-        pattern_pdf_url: '',
-      },
-      {
-        id: 'sample_job_2',
-        user_id: userId || userEmail || 'info.nxuswave@gmail.com',
-        title: 'Spring Wildflowers Embroidery Pattern',
-        status: 'complete',
-        grid_width: 80,
-        grid_height: 80,
-        colors_count: 24,
-        created_at: new Date(Date.now() - 3600000 * 72).toISOString(),
-        pattern_pdf_url: '',
-      }
-    ];
-    allJobs = defaultSampleJobs;
-  }
-
-  // Sort by created_at descending
-  allJobs.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-  const paginated = allJobs.slice(fromIndex, toIndex + 1);
-
   return {
-    jobs: paginated,
-    totalCount: allJobs.length,
+    jobs: supabaseJobs,
+    totalCount: count,
   };
 }
 
