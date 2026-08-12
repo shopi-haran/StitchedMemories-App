@@ -685,7 +685,7 @@ export async function buildPatternPDFDoc(
 }
 
 /**
- * Generate and download complete multi-page PDF for Color Pattern or Symbol Chart
+ * Generate and download complete multi-page PDF for Color Pattern or Symbol Chart (triggers file download)
  */
 export async function exportPatternToPDF(
   pattern: GeneratedPattern,
@@ -694,8 +694,38 @@ export async function exportPatternToPDF(
   patternName: string
 ): Promise<void> {
   const doc = await buildPatternPDFDoc(pattern, mode, config, patternName);
-  const cleanFileName = patternName.toLowerCase().replace(/[^a-z0-9]/g, '-');
-  doc.save(`${cleanFileName}-${mode}-chart.pdf`);
+  const cleanFileName = (patternName || 'pattern').toLowerCase().replace(/[^a-z0-9]/g, '-');
+  const fileName = `${cleanFileName}-${mode}-chart.pdf`;
+
+  const blob = doc.output('blob');
+  const blobUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = blobUrl;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+}
+
+/**
+ * Generate and open PDF in a browser tab for previewing without downloading
+ */
+export async function previewPatternPDF(
+  pattern: GeneratedPattern,
+  mode: 'color' | 'symbol',
+  config: PatternConfig,
+  patternName: string,
+  existingTab?: Window | null
+): Promise<void> {
+  const doc = await buildPatternPDFDoc(pattern, mode, config, patternName);
+  const pdfBlob = doc.output('blob');
+  const blobUrl = URL.createObjectURL(pdfBlob);
+  if (existingTab && !existingTab.closed) {
+    existingTab.location.href = blobUrl;
+  } else {
+    window.open(blobUrl, '_blank');
+  }
 }
 
 /**
@@ -735,7 +765,6 @@ export async function downloadFileFromUrl(url: string, defaultFilename: string):
     link.href = url;
     const filename = defaultFilename.endsWith('.pdf') ? defaultFilename : `${defaultFilename}.pdf`;
     link.download = filename;
-    link.target = '_blank';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

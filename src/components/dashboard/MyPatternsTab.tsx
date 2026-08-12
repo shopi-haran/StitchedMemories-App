@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { fetchUserConversionJobs, fetchUserProfile, SupabaseConversionJobRow } from '../../lib/supabase';
 import { generatePatternFromImage, PatternConfig } from '../../utils/patternEngine';
-import { exportPatternToPDF, downloadFileFromUrl } from '../../utils/pdfExporter';
+import { exportPatternToPDF, previewPatternPDF, downloadFileFromUrl } from '../../utils/pdfExporter';
 import { StitchTrackerModal } from './StitchTrackerModal';
 import dogImg from '../../assets/images/hoop_dog.png';
 
@@ -194,18 +194,22 @@ export const MyPatternsTab: React.FC<MyPatternsTabProps> = ({ user, onOpenConver
     loadJobs(0, false);
   };
 
-  const handleDownloadPdf = async (job: SupabaseConversionJobRow, e: React.MouseEvent) => {
+  const handlePreviewPdf = async (job: SupabaseConversionJobRow, e: React.MouseEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     const cardTitle = job.title || job.title_name || job.filename || `Cross Stitch Chart #${job.id}`;
 
-    // If valid PDF URL exists, trigger real file download
+    // If valid PDF URL exists, open preview in a new browser tab
     if (job.pattern_pdf_url && (job.pattern_pdf_url.startsWith('http') || job.pattern_pdf_url.startsWith('blob:'))) {
-      await downloadFileFromUrl(job.pattern_pdf_url, cardTitle);
+      window.open(job.pattern_pdf_url, '_blank');
       return;
     }
 
-    // Otherwise, generate pattern and PDF chart on-demand
+    // Otherwise, generate pattern and PDF chart on-demand and open preview tab
     setDownloadingPdfJobId(job.id);
+
+    // Open blank tab synchronously to prevent browser popup blockers
+    const previewTab = window.open('about:blank', '_blank');
 
     try {
       const photoUrl = getJobPhotoUrl(job);
@@ -221,9 +225,10 @@ export const MyPatternsTab: React.FC<MyPatternsTabProps> = ({ user, onOpenConver
       };
 
       const pattern = await generatePatternFromImage(photoUrl, config);
-      await exportPatternToPDF(pattern, 'color', config, cardTitle);
+      await previewPatternPDF(pattern, 'color', config, cardTitle, previewTab);
     } catch (err) {
-      console.error('On-demand PDF generation error:', err);
+      console.error('On-demand PDF preview error:', err);
+      if (previewTab && !previewTab.closed) previewTab.close();
       // Fallback: Open interactive pattern viewer where user can view and download PDF
       setSelectedTrackerJob(job);
     } finally {
@@ -450,19 +455,19 @@ export const MyPatternsTab: React.FC<MyPatternsTabProps> = ({ user, onOpenConver
 
                         <button
                           type="button"
-                          onClick={(e) => handleDownloadPdf(job, e)}
+                          onClick={(e) => handlePreviewPdf(job, e)}
                           disabled={downloadingPdfJobId === job.id}
                           className="w-full sm:w-1/2 py-2 px-3 bg-[#E06C38] hover:bg-[#d05c28] text-white text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-xs disabled:opacity-60"
-                          title="Download PDF pattern chart"
+                          title="Preview PDF pattern chart in browser tab"
                         >
                           {downloadingPdfJobId === job.id ? (
                             <>
                               <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
-                              <span>Generating PDF...</span>
+                              <span>Loading Preview...</span>
                             </>
                           ) : (
                             <>
-                              <Download className="w-3.5 h-3.5" />
+                              <FileText className="w-3.5 h-3.5" />
                               <span>PDF Chart</span>
                             </>
                           )}
