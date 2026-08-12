@@ -15,7 +15,7 @@ import {
   createScaledThumbnail
 } from '../utils/patternEngine';
 import { exportPatternToPDF, generatePatternPDFBlob } from '../utils/pdfExporter';
-import { fetchUserProfile, saveUserConversionJob, uploadPDFToSupabase, uploadThumbnailToSupabase, supabase } from '../lib/supabase';
+import { fetchUserProfile, saveUserConversionJob, uploadPDFToSupabase, uploadThumbnailToSupabase, uploadOriginalPhotoToSupabase, supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { AuthModal } from './AuthModal';
 import { StudioImageEditorModal } from './StudioImageEditorModal';
@@ -323,9 +323,21 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
 
         let pdfUrl = '';
         let uploadedThumbUrl = '';
+        let uploadedOriginalUrl = '';
 
         if (isAuthenticated) {
-          // Generate pattern PDF with DMC symbol chart & color key and upload to conversion-results storage bucket
+          // 1. Upload original photo submitted by user to conversion-results storage bucket
+          try {
+            console.log('[ConversionSave] Uploading original submitted photo to Supabase conversion-results storage bucket...');
+            const uploadedOrig = await uploadOriginalPhotoToSupabase(selectedPhotoUrl, customPhotoName || 'Converted Pattern', userIdToSave);
+            if (uploadedOrig) {
+              uploadedOriginalUrl = uploadedOrig;
+            }
+          } catch (origErr) {
+            console.error('[ConversionSave] Error uploading original photo to storage:', origErr);
+          }
+
+          // 2. Generate pattern PDF with DMC symbol chart & color key and upload to conversion-results storage bucket
           try {
             console.log('[ConversionSave] Generating pattern PDF blob for storage upload...');
             const pdfBlob = await generatePatternPDFBlob(result, 'color', config, customPhotoName || 'Converted Pattern');
@@ -338,7 +350,7 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
             console.error('[ConversionSave] Error generating or uploading pattern PDF:', pdfErr);
           }
 
-          // Upload thumbnail to storage bucket
+          // 3. Upload thumbnail to storage bucket
           try {
             const uploadedThumb = await uploadThumbnailToSupabase(compactThumb || scaledPhoto, customPhotoName || 'Converted Pattern', userIdToSave);
             if (uploadedThumb) {
@@ -358,6 +370,7 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
           colors_count: result.flossList.length,
           photo_url: uploadedThumbUrl || scaledPhoto,
           thumbnail_url: uploadedThumbUrl || compactThumb,
+          original_image_url: uploadedOriginalUrl || '',
           pattern_pdf_url: pdfUrl,
         });
 
@@ -370,6 +383,7 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
           colors_count: result.flossList.length,
           photo_url: uploadedThumbUrl || scaledPhoto,
           thumbnail_url: uploadedThumbUrl || compactThumb,
+          original_image_url: uploadedOriginalUrl || '',
           pattern_pdf_url: pdfUrl,
         });
 

@@ -103,6 +103,7 @@ export interface SupabaseConversionJobRow {
   title?: string;
   filename?: string;
   thumbnail_url?: string;
+  original_image_url?: string;
   pattern_pdf_url?: string;
   status: 'complete' | 'processing' | 'failed' | 'pending' | string;
   created_at: string;
@@ -225,6 +226,7 @@ export async function saveUserConversionJob(jobData: {
   colors_count?: number;
   photo_url?: string;
   thumbnail_url?: string;
+  original_image_url?: string;
   pattern_pdf_url?: string;
   [key: string]: any;
 }): Promise<boolean> {
@@ -236,6 +238,7 @@ export async function saveUserConversionJob(jobData: {
     colors_count: jobData.colors_count,
     hasPhotoUrl: !!jobData.photo_url,
     hasThumbUrl: !!jobData.thumbnail_url,
+    hasOriginalUrl: !!jobData.original_image_url,
     hasPdfUrl: !!jobData.pattern_pdf_url,
     photo_url_snippet: jobData.photo_url ? jobData.photo_url.substring(0, 80) : '',
     pdf_url_snippet: jobData.pattern_pdf_url ? jobData.pattern_pdf_url.substring(0, 80) : '',
@@ -246,7 +249,7 @@ export async function saveUserConversionJob(jobData: {
     return false;
   }
 
-  const rawPhoto = jobData.photo_url || jobData.thumbnail_url || '';
+  const rawPhoto = jobData.photo_url || jobData.thumbnail_url || jobData.original_image_url || '';
   let compactThumbnail = jobData.thumbnail_url || '';
   let mediumPhoto = jobData.photo_url || '';
 
@@ -310,6 +313,7 @@ export async function saveUserConversionJob(jobData: {
     colors_count: jobData.colors_count || 18,
     photo_url: finalPhoto.length < 250000 ? finalPhoto : '',
     thumbnail_url: finalThumb.length < 100000 ? finalThumb : '',
+    original_image_url: jobData.original_image_url || '',
     pattern_pdf_url: jobData.pattern_pdf_url || '',
     created_at: new Date().toISOString(),
   };
@@ -350,6 +354,7 @@ export async function saveUserConversionJob(jobData: {
     colors_count: jobData.colors_count || 18,
     photo_url: finalPhoto.length < 250000 ? finalPhoto : '',
     thumbnail_url: jobData.thumbnail_url || (finalThumb.length < 100000 ? finalThumb : ''),
+    original_image_url: jobData.original_image_url || '',
     pattern_pdf_url: jobData.pattern_pdf_url || '',
     created_at: new Date().toISOString(),
   };
@@ -418,6 +423,7 @@ export async function migrateGuestConversionJobs(userId: string): Promise<void> 
               colors_count: job.colors_count || 18,
               photo_url: job.photo_url || '',
               thumbnail_url: job.thumbnail_url || '',
+              original_image_url: job.original_image_url || '',
               pattern_pdf_url: job.pattern_pdf_url || '',
               created_at: job.created_at || new Date().toISOString(),
             },
@@ -724,6 +730,70 @@ export async function uploadThumbnailToSupabase(imageSrc: string, fileName: stri
     return publicUrlData?.publicUrl || null;
   } catch (err) {
     console.error('[uploadThumbnailToSupabase] Exception during thumbnail upload:', err);
+    return null;
+  }
+}
+
+export async function uploadOriginalPhotoToSupabase(imageSrc: string, fileName: string, userId: string): Promise<string | null> {
+  try {
+    if (!imageSrc) return null;
+    let blob: Blob;
+    if (imageSrc.startsWith('data:')) {
+      const resp = await fetch(imageSrc);
+      blob = await resp.blob();
+    } else if (imageSrc.startsWith('blob:')) {
+      const resp = await fetch(imageSrc);
+      blob = await resp.blob();
+    } else if (imageSrc.startsWith('http')) {
+      return imageSrc;
+    } else {
+      return null;
+    }
+
+    const { data: { session } } = await supabase.auth.getSession();
+    console.log('[uploadOriginalPhotoToSupabase] Supabase Auth Session before upload:', {
+      hasSession: !!session,
+      sessionUserId: session?.user?.id,
+      sessionUserEmail: session?.user?.email,
+      paramUserId: userId,
+    });
+
+    const effectiveUserId = session?.user?.id || userId;
+    const cleanUserId = (effectiveUserId || 'user').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const cleanFileName = (fileName || 'original').replace(/[^a-zA-Z0-9_-]/g, '_');
+
+    let fileExt = 'jpg';
+    if (blob.type === 'image/png') fileExt = 'png';
+    else if (blob.type === 'image/webp') fileExt = 'webp';
+    else if (blob.type === 'image/gif') fileExt = 'gif';
+
+    const filePath = `${cleanUserId}_${cleanFileName}_original_${Date.now()}.${fileExt}`;
+
+    const { data, error } = await supabase.storage
+      .from('conversion-results')
+      .upload(filePath, blob, {
+        contentType: blob.type || 'image/jpeg',
+        upsert: true,
+      });
+
+    if (error) {
+      console.error('[uploadOriginalPhotoToSupabase] Supabase storage upload error for original photo:', {
+        error,
+        code: (error as any).statusCode || (error as any).code,
+        message: error.message,
+      });
+      return null;
+    }
+
+    console.log('[uploadOriginalPhotoToSupabase] Storage upload succeeded for original photo:', data);
+
+    const { data: publicUrlData } = supabase.storage
+      .from('conversion-results')
+      .getPublicUrl(filePath);
+
+    return publicUrlData?.publicUrl || null;
+  } catch (err) {
+    console.error('[uploadOriginalPhotoToSupabase] Exception during original photo upload:', err);
     return null;
   }
 }
