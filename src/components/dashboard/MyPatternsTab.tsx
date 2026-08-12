@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { fetchUserConversionJobs, fetchUserProfile, SupabaseConversionJobRow } from '../../lib/supabase';
 import { generatePatternFromImage, PatternConfig } from '../../utils/patternEngine';
-import { exportPatternToPDF } from '../../utils/pdfExporter';
+import { exportPatternToPDF, downloadFileFromUrl } from '../../utils/pdfExporter';
 import { StitchTrackerModal } from './StitchTrackerModal';
 import dogImg from '../../assets/images/hoop_dog.png';
 
@@ -196,16 +196,16 @@ export const MyPatternsTab: React.FC<MyPatternsTabProps> = ({ user, onOpenConver
 
   const handleDownloadPdf = async (job: SupabaseConversionJobRow, e: React.MouseEvent) => {
     e.preventDefault();
+    const cardTitle = job.title || job.title_name || job.filename || `Cross Stitch Chart #${job.id}`;
 
-    // If valid PDF URL exists, open it in new tab directly
+    // If valid PDF URL exists, trigger real file download
     if (job.pattern_pdf_url && (job.pattern_pdf_url.startsWith('http') || job.pattern_pdf_url.startsWith('blob:'))) {
-      window.open(job.pattern_pdf_url, '_blank', 'noopener,noreferrer');
+      await downloadFileFromUrl(job.pattern_pdf_url, cardTitle);
       return;
     }
 
     // Otherwise, generate pattern and PDF chart on-demand
     setDownloadingPdfJobId(job.id);
-    const cardTitle = job.title || job.title_name || job.filename || `Cross Stitch Chart #${job.id}`;
 
     try {
       const photoUrl = getJobPhotoUrl(job);

@@ -20,7 +20,7 @@ import {
   GeneratedPattern, 
   PatternConfig 
 } from '../../utils/patternEngine';
-import { exportPatternToPDF } from '../../utils/pdfExporter';
+import { exportPatternToPDF, downloadFileFromUrl } from '../../utils/pdfExporter';
 import dogImg from '../../assets/images/hoop_dog.png';
 
 interface StitchTrackerModalProps {
@@ -79,7 +79,7 @@ export const StitchTrackerModal: React.FC<StitchTrackerModalProps> = ({
 
     const initPattern = async () => {
       try {
-        let photoUrl = job.photo_url || job.thumbnail_url || '';
+        let photoUrl = job.pattern_preview_url || job.original_image_url || job.photo_url || job.thumbnail_url || '';
         if (!photoUrl || photoUrl.length < 5 || photoUrl.startsWith('blob:')) {
           try {
             const cachedPhoto = localStorage.getItem(`user_pattern_photo_${job.title}`);
@@ -277,7 +277,7 @@ export const StitchTrackerModal: React.FC<StitchTrackerModalProps> = ({
             <button
               onClick={async () => {
                 if (job.pattern_pdf_url) {
-                  window.open(job.pattern_pdf_url, '_blank');
+                  await downloadFileFromUrl(job.pattern_pdf_url, cardTitle);
                   return;
                 }
                 if (!pattern) return;

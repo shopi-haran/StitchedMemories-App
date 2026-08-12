@@ -710,3 +710,34 @@ export async function generatePatternPDFBlob(
   const doc = await buildPatternPDFDoc(pattern, mode, config, patternName);
   return doc.output('blob');
 }
+
+/**
+ * Trigger real file download for remote PDF URL or blob URL
+ */
+export async function downloadFileFromUrl(url: string, defaultFilename: string): Promise<void> {
+  if (!url) return;
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`HTTP status ${response.status}`);
+    const blob = await response.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    const filename = defaultFilename.endsWith('.pdf') ? defaultFilename : `${defaultFilename}.pdf`;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+  } catch (err) {
+    console.warn('[downloadFileFromUrl] Fetch failed, falling back to anchor click:', err);
+    const link = document.createElement('a');
+    link.href = url;
+    const filename = defaultFilename.endsWith('.pdf') ? defaultFilename : `${defaultFilename}.pdf`;
+    link.download = filename;
+    link.target = '_blank';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+}

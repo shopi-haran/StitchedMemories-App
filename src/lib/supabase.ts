@@ -105,6 +105,7 @@ export interface SupabaseConversionJobRow {
   thumbnail_url?: string;
   original_image_url?: string;
   pattern_pdf_url?: string;
+  pattern_preview_url?: string;
   status: 'complete' | 'processing' | 'failed' | 'pending' | string;
   created_at: string;
   grid_width?: number;
@@ -228,6 +229,7 @@ export async function saveUserConversionJob(jobData: {
   thumbnail_url?: string;
   original_image_url?: string;
   pattern_pdf_url?: string;
+  pattern_preview_url?: string;
   [key: string]: any;
 }): Promise<boolean> {
   console.log('[saveUserConversionJob] Function invoked with data:', {
@@ -240,6 +242,7 @@ export async function saveUserConversionJob(jobData: {
     hasThumbUrl: !!jobData.thumbnail_url,
     hasOriginalUrl: !!jobData.original_image_url,
     hasPdfUrl: !!jobData.pattern_pdf_url,
+    hasPreviewUrl: !!jobData.pattern_preview_url,
     photo_url_snippet: jobData.photo_url ? jobData.photo_url.substring(0, 80) : '',
     pdf_url_snippet: jobData.pattern_pdf_url ? jobData.pattern_pdf_url.substring(0, 80) : '',
   });
@@ -315,6 +318,7 @@ export async function saveUserConversionJob(jobData: {
     thumbnail_url: finalThumb.length < 100000 ? finalThumb : '',
     original_image_url: jobData.original_image_url || '',
     pattern_pdf_url: jobData.pattern_pdf_url || '',
+    pattern_preview_url: jobData.pattern_preview_url || '',
     created_at: new Date().toISOString(),
   };
 
@@ -356,6 +360,7 @@ export async function saveUserConversionJob(jobData: {
     thumbnail_url: jobData.thumbnail_url || (finalThumb.length < 100000 ? finalThumb : ''),
     original_image_url: jobData.original_image_url || '',
     pattern_pdf_url: jobData.pattern_pdf_url || '',
+    pattern_preview_url: jobData.pattern_preview_url || '',
     created_at: new Date().toISOString(),
   };
 
@@ -425,6 +430,7 @@ export async function migrateGuestConversionJobs(userId: string): Promise<void> 
               thumbnail_url: job.thumbnail_url || '',
               original_image_url: job.original_image_url || '',
               pattern_pdf_url: job.pattern_pdf_url || '',
+              pattern_preview_url: job.pattern_preview_url || '',
               created_at: job.created_at || new Date().toISOString(),
             },
           ]);
@@ -790,6 +796,67 @@ export async function uploadOriginalPhotoToSupabase(imageSrc: string, fileName: 
     return publicUrlData?.publicUrl || null;
   } catch (err) {
     console.error('[uploadOriginalPhotoToSupabase] Exception during original photo upload:', err);
+    return null;
+  }
+}
+
+export async function uploadPatternPreviewToSupabase(imageSrc: string | Blob, fileName: string, userId: string): Promise<string | null> {
+  try {
+    if (!imageSrc) return null;
+    let blob: Blob;
+    if (imageSrc instanceof Blob) {
+      blob = imageSrc;
+    } else if (typeof imageSrc === 'string' && (imageSrc.startsWith('data:') || imageSrc.startsWith('blob:') || imageSrc.startsWith('http'))) {
+      const resp = await fetch(imageSrc);
+      blob = await resp.blob();
+    } else {
+      return null;
+    }
+
+    const { data: { session } } = await supabase.auth.getSession();
+    console.log('[uploadPatternPreviewToSupabase] Supabase Auth Session before upload:', {
+      hasSession: !!session,
+      sessionUserId: session?.user?.id,
+      sessionUserEmail: session?.user?.email,
+      hasAccessToken: !!session?.access_token,
+      paramUserId: userId,
+    });
+
+    const effectiveUserId = session?.user?.id || userId;
+    const cleanUserId = (effectiveUserId || 'user').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const cleanFileName = (fileName || 'pattern_preview').replace(/[^a-zA-Z0-9_-]/g, '_');
+
+    let fileExt = 'png';
+    if (blob.type === 'image/jpeg') fileExt = 'jpg';
+    else if (blob.type === 'image/webp') fileExt = 'webp';
+
+    const filePath = `${cleanUserId}_${cleanFileName}_preview_${Date.now()}.${fileExt}`;
+
+    const { data, error } = await supabase.storage
+      .from('conversion-results')
+      .upload(filePath, blob, {
+        contentType: blob.type || 'image/png',
+        upsert: true,
+      });
+
+    if (error) {
+      console.error('[uploadPatternPreviewToSupabase] Supabase storage upload error for pattern preview:', {
+        error,
+        code: (error as any).statusCode || (error as any).code,
+        message: error.message,
+      });
+      return null;
+    }
+
+    console.log('[uploadPatternPreviewToSupabase] Storage upload succeeded:', data);
+
+    const { data: publicUrlData } = supabase.storage
+      .from('conversion-results')
+      .getPublicUrl(filePath);
+
+    return publicUrlData?.publicUrl || null;
+  } catch (err) {
+    console.error('[uploadPatternPreviewToSupabase] Exception during pattern preview upload:', err);
     return null;
   }
 }
