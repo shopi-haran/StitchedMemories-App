@@ -437,10 +437,27 @@ export interface SupabaseOrderRow {
   id: string | number;
   user_id: string;
   order_type: string;
-  items: OrderItem[] | OrderItem | string | any;
+  items?: OrderItem[] | OrderItem | string | any;
+  request_details?: {
+    photo_url?: string;
+    pattern_result_url?: string;
+    size?: string;
+    color_count?: number | string;
+    stitch_count?: number | string | null;
+    delivery_address?: string;
+    customer_notes?: string;
+    phone?: string;
+    product_style?: string;
+    is_framed?: boolean;
+    framing_option?: string;
+    customer_name?: string;
+    customer_email?: string;
+    [key: string]: any;
+  };
+  fulfillment_status?: string;
   created_at: string;
-  total_amount: number | string;
-  payment_status: string;
+  total_amount?: number | string;
+  payment_status?: string;
   [key: string]: any;
 }
 
@@ -471,15 +488,133 @@ export async function fetchUserStoreOrders(
   return (data || []) as SupabaseOrderRow[];
 }
 
+export interface CreateOrderRequestParams {
+  userId?: string;
+  userEmail?: string;
+  orderType: 'custom_kit_converter' | 'custom_kit_assisted' | 'custom_stitched' | string;
+  requestDetails: {
+    photo_url?: string;
+    pattern_result_url?: string;
+    size?: string;
+    color_count?: number | string;
+    stitch_count?: number | string | null;
+    delivery_address: string;
+    customer_notes?: string;
+    phone?: string;
+    product_style?: string;
+    framed?: boolean;
+    is_framed?: boolean;
+    framing_option?: string;
+    customer_name?: string;
+    customer_email?: string;
+    [key: string]: any;
+  };
+}
+
+export async function createOrderRequest(params: CreateOrderRequestParams): Promise<{ success: boolean; data?: any; error?: any }> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const effectiveUserId = session?.user?.id || params.userId || session?.user?.email || params.userEmail;
+
+    if (!effectiveUserId) {
+      console.warn('[createOrderRequest] No logged in user session or user ID provided.');
+      return { success: false, error: new Error('User must be logged in to submit an order.') };
+    }
+
+    const payload: Record<string, any> = {
+      user_id: effectiveUserId,
+      order_type: params.orderType,
+      request_details: params.requestDetails,
+      fulfillment_status: 'pending_quote',
+      payment_status: 'pending_quote',
+      total_amount: 0,
+      created_at: new Date().toISOString(),
+    };
+
+    console.log('[createOrderRequest] Submitting row to Supabase orders table:', payload);
+
+    const { data, error } = await supabase
+      .from('orders')
+      .insert([payload])
+      .select();
+
+    if (error) {
+      console.error('[createOrderRequest] Supabase orders table insert error:', error);
+      
+      // Attempt fallback insert with stringified request_details if jsonb typing differed
+      try {
+        const fallbackPayload = {
+          ...payload,
+          request_details: JSON.stringify(params.requestDetails),
+          items: [{
+            title: params.orderType === 'custom_kit_converter' ? 'Converter Custom Kit' :
+                   params.orderType === 'custom_kit_assisted' ? 'Assisted Custom Kit' : 'Custom Stitched Product',
+            price: 0,
+            quantity: 1,
+            details: params.requestDetails,
+          }],
+        };
+        const fallbackRes = await supabase.from('orders').insert([fallbackPayload]).select();
+        if (!fallbackRes.error) {
+          console.log('[createOrderRequest] Fallback insert succeeded:', fallbackRes.data);
+          return { success: true, data: fallbackRes.data };
+        }
+      } catch (fallbackErr) {
+        console.warn('[createOrderRequest] Fallback insert exception:', fallbackErr);
+      }
+
+      return { success: false, error };
+    }
+
+    console.log('[createOrderRequest] Order successfully saved to Supabase orders:', data);
+
+    // Also mirror to stitch_orders for real-time tracking tabs
+    try {
+      let orderTitle = 'Custom Quote Request';
+      if (params.orderType === 'custom_kit_converter') {
+        orderTitle = `Converter Custom Kit (${params.requestDetails.size || 'Standard'})`;
+      } else if (params.orderType === 'custom_kit_assisted') {
+        orderTitle = `Assisted Custom Kit (${params.requestDetails.size || 'Standard'})`;
+      } else if (params.orderType === 'custom_stitched') {
+        orderTitle = `Custom Hand-Stitched Keepsake (${params.requestDetails.size || 'Standard'})`;
+      }
+
+      await supabase.from('stitch_orders').insert([
+        {
+          user_id: effectiveUserId,
+          title: orderTitle,
+          status: 'received',
+          status_note: "Order received — we'll confirm final pricing and delivery charges in your dashboard within 24-48 hours.",
+          image_url: params.requestDetails.photo_url || params.requestDetails.pattern_result_url || '',
+          created_at: new Date().toISOString(),
+        }
+      ]);
+    } catch (mirrorErr) {
+      console.warn('[createOrderRequest] stitch_orders mirror notice:', mirrorErr);
+    }
+
+    try {
+      window.dispatchEvent(new CustomEvent('orderCreated', { detail: { orderType: params.orderType } }));
+    } catch {}
+
+    return { success: true, data };
+  } catch (err: any) {
+    console.error('[createOrderRequest] Unexpected exception:', err);
+    return { success: false, error: err };
+  }
+}
+
 export interface SupabaseStitchOrderRow {
   id: string | number;
   user_id: string;
   title?: string;
   image_url?: string;
-  status: string; // 'received' | 'in_progress' | 'quality_check' | 'shipped' | 'delivered'
+  status: string; // 'received' | 'in_progress' | 'quality_check' | 'shipped' | 'delivered' | 'pending_quote'
   status_note?: string;
   estimated_completion?: string;
   created_at?: string;
+  order_type?: string;
+  request_details?: any;
   [key: string]: any;
 }
 
@@ -487,26 +622,92 @@ export async function fetchUserStitchOrders(
   userId?: string,
   userEmail?: string
 ): Promise<SupabaseStitchOrderRow[]> {
-  let query = supabase
-    .from('stitch_orders')
-    .select('*');
+  const allResults: SupabaseStitchOrderRow[] = [];
+  const seenIds = new Set<string>();
 
-  if (userId) {
-    query = query.eq('user_id', userId);
-  } else if (userEmail) {
-    query = query.eq('user_id', userEmail);
+  // 1. Fetch from custom requests in orders table
+  try {
+    let orderQuery = supabase
+      .from('orders')
+      .select('*')
+      .in('order_type', ['custom_kit_converter', 'custom_kit_assisted', 'custom_stitched']);
+
+    if (userId) {
+      orderQuery = orderQuery.eq('user_id', userId);
+    } else if (userEmail) {
+      orderQuery = orderQuery.eq('user_id', userEmail);
+    }
+
+    orderQuery = orderQuery.order('created_at', { ascending: false });
+
+    const { data: orderRows, error: orderErr } = await orderQuery;
+    if (!orderErr && orderRows && Array.isArray(orderRows)) {
+      for (const row of orderRows) {
+        const details = typeof row.request_details === 'string'
+          ? (() => { try { return JSON.parse(row.request_details); } catch { return {}; } })()
+          : row.request_details || {};
+
+        let title = 'Custom Quote Request';
+        if (row.order_type === 'custom_kit_converter') title = `Custom Kit (Converter) - ${details.size || 'Standard'}`;
+        else if (row.order_type === 'custom_kit_assisted') title = `Assisted Kit - ${details.size || 'Standard'}`;
+        else if (row.order_type === 'custom_stitched') title = `Custom Stitched Keepsake - ${details.size || 'Standard'}`;
+
+        const mapped: SupabaseStitchOrderRow = {
+          id: `order_${row.id}`,
+          user_id: row.user_id,
+          title: title,
+          image_url: details.photo_url || details.pattern_result_url || '',
+          status: row.fulfillment_status || 'pending_quote',
+          status_note: row.fulfillment_status === 'pending_quote' 
+            ? "Order received — we'll confirm final pricing and delivery charges in your dashboard within 24-48 hours."
+            : 'Studio team is reviewing your project details.',
+          created_at: row.created_at,
+          order_type: row.order_type,
+          request_details: details,
+        };
+        seenIds.add(String(mapped.id));
+        allResults.push(mapped);
+      }
+    }
+  } catch (err) {
+    console.error('Error fetching custom orders from orders table:', err);
   }
 
-  query = query.order('created_at', { ascending: false });
+  // 2. Fetch from stitch_orders table
+  try {
+    let query = supabase
+      .from('stitch_orders')
+      .select('*');
 
-  const { data, error } = await query;
+    if (userId) {
+      query = query.eq('user_id', userId);
+    } else if (userEmail) {
+      query = query.eq('user_id', userEmail);
+    }
 
-  if (error) {
-    console.error('Error fetching stitch_orders from Supabase:', error);
-    return [];
+    query = query.order('created_at', { ascending: false });
+
+    const { data, error } = await query;
+
+    if (!error && data && Array.isArray(data)) {
+      for (const item of data) {
+        if (!seenIds.has(String(item.id))) {
+          allResults.push(item);
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Error fetching stitch_orders from Supabase:', err);
   }
 
-  return (data || []) as SupabaseStitchOrderRow[];
+  // Sort newest first
+  allResults.sort((a, b) => {
+    const timeA = new Date(a.created_at || 0).getTime();
+    const timeB = new Date(b.created_at || 0).getTime();
+    return timeB - timeA;
+  });
+
+  return allResults;
 }
 
 export async function createCustomStitchOrder(params: {
@@ -525,7 +726,7 @@ export async function createCustomStitchOrder(params: {
         user_id: targetUserId,
         title: params.title,
         status: 'received',
-        status_note: 'Request received. Studio team is reviewing your project details.',
+        status_note: "Order received — we'll confirm final pricing and delivery charges in your dashboard within 24-48 hours.",
         image_url: params.sourceImageUrl || '',
         created_at: new Date().toISOString(),
       },

@@ -3,7 +3,7 @@ import {
   X, Upload, Sparkles, Sliders, Layers, Check, Download,
   RefreshCw, Lock, Shield, ArrowRight, Eye, CheckCircle2,
   Edit3, Trash2, Repeat, Ruler, Calculator, ZoomIn, Info,
-  ShoppingBag, Package, Truck, CreditCard, Crown
+  ShoppingBag, Package, Truck, CreditCard, Crown, AlertCircle
 } from 'lucide-react';
 import { DMCItem, DMC_DATABASE } from '../utils/dmcPalette';
 import {
@@ -16,7 +16,7 @@ import {
   createScaledThumbnail
 } from '../utils/patternEngine';
 import { exportPatternToPDF, generatePatternPDFBlob } from '../utils/pdfExporter';
-import { fetchUserProfile, saveUserConversionJob, uploadPDFToSupabase, uploadThumbnailToSupabase, uploadOriginalPhotoToSupabase, uploadPatternPreviewToSupabase, supabase } from '../lib/supabase';
+import { fetchUserProfile, saveUserConversionJob, uploadPDFToSupabase, uploadThumbnailToSupabase, uploadOriginalPhotoToSupabase, uploadPatternPreviewToSupabase, createOrderRequest, supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { AuthModal } from './AuthModal';
 import { StudioImageEditorModal } from './StudioImageEditorModal';
@@ -149,6 +149,16 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
   const [showSymbolsOnColor, setShowSymbolsOnColor] = useState<boolean>(true);
   const [brand, setBrand] = useState<'DMC' | 'Anchor'>('DMC');
 
+  // Order Kit & Supplies Modal State
+  const [isOrderKitModalOpen, setIsOrderKitModalOpen] = useState<boolean>(false);
+  const [orderDeliveryAddress, setOrderDeliveryAddress] = useState<string>('');
+  const [orderPhone, setOrderPhone] = useState<string>('');
+  const [orderNotes, setOrderNotes] = useState<string>('');
+  const [isSubmittingOrder, setIsSubmittingOrder] = useState<boolean>(false);
+  const [orderSuccess, setOrderSuccess] = useState<boolean>(false);
+  const [orderError, setOrderError] = useState<string | null>(null);
+  const [pendingOrderSubmit, setPendingOrderSubmit] = useState<boolean>(false);
+
   // Reset converter state to defaults for a new conversion session
   const resetSessionState = () => {
     lastSavedSignatureRef.current = null;
@@ -170,6 +180,9 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
     setCompletedStitches(new Set());
     setViewMode('color');
     setPattern(null);
+    setIsOrderKitModalOpen(false);
+    setOrderSuccess(false);
+    setOrderError(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -177,6 +190,90 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
 
   const handleConvertAnotherImage = () => {
     resetSessionState();
+  };
+
+  const handleOpenOrderKitModal = () => {
+    setOrderSuccess(false);
+    setOrderError(null);
+    setIsOrderKitModalOpen(true);
+  };
+
+  const handleOrderKitSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!orderDeliveryAddress.trim()) {
+      setOrderError('Please provide a valid delivery address.');
+      return;
+    }
+    if (!orderPhone.trim()) {
+      setOrderError('Please provide a contact phone number.');
+      return;
+    }
+
+    const activeUserId = session?.user?.id || effectiveUser?.id;
+    const activeUserEmail = session?.user?.email || effectiveUser?.email;
+
+    if (!activeUserId && !activeUserEmail) {
+      setPendingOrderSubmit(true);
+      setAuthModalConfig({
+        isOpen: true,
+        defaultTab: 'login',
+        customTitle: 'Log In to Submit Order',
+        customSubtitle: 'Please log in or create an account to place your custom kit request and track quotes.',
+      });
+      return;
+    }
+
+    setIsSubmittingOrder(true);
+    setOrderError(null);
+
+    try {
+      // Background save of pattern
+      executeSaveWorkflow().catch(() => {});
+
+      let photoUrl = selectedPhotoUrl || originalPhotoUrl || '';
+      let patternResultUrl = '';
+
+      if (pattern && canvasRef.current) {
+        try {
+          patternResultUrl = canvasRef.current.toDataURL('image/png');
+        } catch {}
+      }
+
+      const sizeStr = pattern
+        ? `${pattern.physicalWidthInches}" × ${pattern.physicalHeightInches}" (${pattern.widthStitches} × ${pattern.heightStitches} sts, ${fabricCount}ct Aida)`
+        : `${gridWidth} stitches, ${fabricCount}ct Aida`;
+
+      const result = await createOrderRequest({
+        userId: activeUserId,
+        userEmail: activeUserEmail,
+        orderType: 'custom_kit_converter',
+        requestDetails: {
+          photo_url: photoUrl,
+          pattern_result_url: patternResultUrl,
+          size: sizeStr,
+          color_count: pattern ? pattern.flossList.length : colorLimit,
+          stitch_count: pattern ? pattern.totalStitches : null,
+          delivery_address: orderDeliveryAddress.trim(),
+          phone: orderPhone.trim(),
+          customer_notes: orderNotes.trim(),
+          brand: brand,
+          fabric_count: fabricCount,
+          customer_name: effectiveUser?.name || '',
+          customer_email: activeUserEmail || '',
+        }
+      });
+
+      if (result.success) {
+        setOrderSuccess(true);
+      } else {
+        setOrderError(result.error?.message || 'Failed to submit order to database. Please try again.');
+      }
+    } catch (err: any) {
+      console.error('Error submitting kit order from converter:', err);
+      setOrderError(err?.message || 'Failed to submit order request.');
+    } finally {
+      setIsSubmittingOrder(false);
+    }
   };
 
   const handleClose = () => {
@@ -1189,6 +1286,15 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
 
               <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
                 <button
+                  onClick={handleOpenOrderKitModal}
+                  disabled={!pattern}
+                  className="w-full sm:w-auto px-5 py-2.5 rounded-full bg-[#1D231E] hover:bg-[#323D34] disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer"
+                >
+                  <Package className="w-4 h-4 text-[#E06C38]" />
+                  <span>Order Kit & Supplies</span>
+                </button>
+
+                <button
                   onClick={() => handleDownloadChart('color')}
                   disabled={!pattern || isExportingPdf}
                   className="w-full sm:w-auto px-6 py-2.5 rounded-full bg-[#E06C38] hover:bg-[#d05c28] disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer"
@@ -1208,6 +1314,193 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
         </div>
 
       </div>
+
+      {/* Converter Order Kit & Supplies Modal */}
+      {isOrderKitModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fadeIn overflow-y-auto">
+          <div className="bg-[#FAF6EE] rounded-3xl max-w-xl w-full shadow-2xl border border-[#E8E1D2] relative my-8 overflow-hidden">
+            
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-6 pb-4 border-b border-[#E8E1D2]">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-[#E06C38]/10 text-[#E06C38] flex items-center justify-center">
+                  <Package className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-[#1D231E]">Order Kit & Supplies</h3>
+                  <p className="text-xs text-[#5A6659]">
+                    Custom fabric, sorted floss skeins, needles & printed chart delivered to you
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsOrderKitModalOpen(false)}
+                className="p-2 text-[#6B7869] hover:text-[#1D231E] rounded-full hover:bg-[#E8E1D2]/60 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6">
+              {orderSuccess ? (
+                <div className="text-center py-6 space-y-4">
+                  <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto shadow-inner">
+                    <CheckCircle2 className="w-10 h-10" />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <h4 className="text-xl font-bold text-[#1D231E]">
+                      Order Received
+                    </h4>
+                    <p className="text-sm font-medium text-[#2D382E] max-w-md mx-auto leading-relaxed bg-white border border-[#E8E1D2] p-4 rounded-2xl">
+                      Order received — we'll confirm final pricing and delivery charges in your dashboard within 24-48 hours.
+                    </p>
+                  </div>
+
+                  <div className="bg-[#F3EDE0] p-4 rounded-2xl text-left text-xs space-y-2 border border-[#E2D8C3] max-w-md mx-auto">
+                    <div className="flex justify-between">
+                      <span className="text-[#6B7869]">Order Type:</span>
+                      <span className="font-semibold text-[#1D231E]">Custom Kit (From Converter)</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[#6B7869]">Size & Fabric:</span>
+                      <span className="font-semibold text-[#1D231E]">
+                        {pattern ? `${pattern.physicalWidthInches}" × ${pattern.physicalHeightInches}" (${fabricCount}ct)` : 'Standard'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[#6B7869]">Floss Palette:</span>
+                      <span className="font-semibold text-[#1D231E]">
+                        {pattern ? `${pattern.flossList.length} ${brand} Colors` : `${colorLimit} Colors`}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[#6B7869]">Status:</span>
+                      <span className="font-semibold text-[#E06C38] bg-[#E06C38]/10 px-2 py-0.5 rounded">
+                        Pending Quote
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="pt-4 flex items-center justify-center gap-3">
+                    <button
+                      onClick={() => setIsOrderKitModalOpen(false)}
+                      className="px-6 py-2.5 bg-[#1D231E] hover:bg-[#323D34] text-white text-xs font-bold rounded-full transition-all shadow-sm cursor-pointer"
+                    >
+                      Done
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <form onSubmit={handleOrderKitSubmit} className="space-y-4">
+                  {orderError && (
+                    <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl flex items-start gap-2.5 text-rose-800 text-xs">
+                      <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                      <span>{orderError}</span>
+                    </div>
+                  )}
+
+                  {/* Pattern Specifications Summary (Read-Only) */}
+                  <div className="p-4 bg-white border border-[#E8E1D2] rounded-2xl flex items-center gap-4">
+                    {selectedPhotoUrl && (
+                      <img
+                        src={selectedPhotoUrl}
+                        alt="Pattern Preview"
+                        className="w-16 h-16 rounded-xl object-cover border border-[#E8E1D2] shrink-0"
+                      />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-[#E06C38] bg-[#E06C38]/10 px-2 py-0.5 rounded-md">
+                          Configured in Converter
+                        </span>
+                      </div>
+                      <h4 className="text-sm font-bold text-[#1D231E] truncate mt-1">
+                        {customPhotoName || 'Custom Pattern Kit'}
+                      </h4>
+                      <p className="text-xs text-[#5A6659] mt-0.5">
+                        {pattern ? (
+                          <>
+                            {pattern.physicalWidthInches}" × {pattern.physicalHeightInches}" • {pattern.flossList.length} {brand} Colors • {pattern.totalStitches.toLocaleString()} sts ({fabricCount}ct)
+                          </>
+                        ) : (
+                          `${gridWidth} stitches • ${colorLimit} colors • ${fabricCount}ct Aida`
+                        )}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Delivery Address */}
+                  <div>
+                    <label className="block text-xs font-bold text-[#1D231E] mb-1">
+                      Delivery Address <span className="text-rose-500">*</span>
+                    </label>
+                    <textarea
+                      required
+                      rows={3}
+                      value={orderDeliveryAddress}
+                      onChange={(e) => setOrderDeliveryAddress(e.target.value)}
+                      placeholder="Street address, Apt/Suite, City, State / Province, Postal Code, Country"
+                      className="w-full px-3.5 py-2.5 bg-white border border-[#D5CDC0] rounded-xl text-xs text-[#1D231E] placeholder:text-[#8A9588] focus:outline-none focus:border-[#E06C38]"
+                    />
+                  </div>
+
+                  {/* Phone Number */}
+                  <div>
+                    <label className="block text-xs font-bold text-[#1D231E] mb-1">
+                      Contact Phone Number <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="tel"
+                      required
+                      value={orderPhone}
+                      onChange={(e) => setOrderPhone(e.target.value)}
+                      placeholder="+1 (555) 000-0000 (for courier tracking & delivery updates)"
+                      className="w-full px-3.5 py-2.5 bg-white border border-[#D5CDC0] rounded-xl text-xs text-[#1D231E] placeholder:text-[#8A9588] focus:outline-none focus:border-[#E06C38]"
+                    />
+                  </div>
+
+                  {/* Customer Notes */}
+                  <div>
+                    <label className="block text-xs font-bold text-[#1D231E] mb-1">
+                      Customer Notes / Special Requests (Optional)
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={orderNotes}
+                      onChange={(e) => setOrderNotes(e.target.value)}
+                      placeholder="Fabric color preference (White, Oatmeal, Black), hoop preferences, gift notes, or target deadline..."
+                      className="w-full px-3.5 py-2 bg-white border border-[#D5CDC0] rounded-xl text-xs text-[#1D231E] placeholder:text-[#8A9588] focus:outline-none focus:border-[#E06C38]"
+                    />
+                  </div>
+
+                  <div className="pt-2">
+                    <button
+                      type="submit"
+                      disabled={isSubmittingOrder}
+                      className="w-full py-3.5 px-6 rounded-2xl bg-[#E06C38] hover:bg-[#d05c28] disabled:opacity-50 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer"
+                    >
+                      {isSubmittingOrder ? (
+                        <span>Submitting Request...</span>
+                      ) : (
+                        <>
+                          <Package className="w-4 h-4" />
+                          <span>Submit Kit Order Request</span>
+                        </>
+                      )}
+                    </button>
+                    <p className="text-[11px] text-[#6B7869] text-center mt-2">
+                      No payment required now. Our team will prepare your custom quote with exact shipping.
+                    </p>
+                  </div>
+                </form>
+              )}
+            </div>
+
+          </div>
+        </div>
+      )}
 
       {/* Converter First Upload Guest Login Choice Modal */}
       {showGuestPrompt && (

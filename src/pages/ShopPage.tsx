@@ -3,20 +3,25 @@ import {
   ShoppingBag, 
   ArrowLeft, 
   Package, 
-  Sparkles,
-  Palette,
-  ArrowRight,
-  Upload,
-  CheckCircle2,
-  HelpCircle,
-  X,
-  FileText,
-  Clock,
-  Ruler,
-  AlertCircle,
-  Heart
+  Sparkles, 
+  Palette, 
+  ArrowRight, 
+  Upload, 
+  CheckCircle2, 
+  HelpCircle, 
+  X, 
+  FileText, 
+  Clock, 
+  Ruler, 
+  AlertCircle, 
+  Heart,
+  Phone,
+  MapPin,
+  Check
 } from 'lucide-react';
-import { createCustomStitchOrder } from '../lib/supabase';
+import { createOrderRequest, uploadOriginalPhotoToSupabase } from '../lib/supabase';
+import { useAuth } from '../context/AuthContext';
+import { AuthModal } from '../components/AuthModal';
 
 interface ShopPageProps {
   onGoHome: () => void;
@@ -25,26 +30,51 @@ interface ShopPageProps {
   onLoginSuccess?: (user: { id?: string; name: string; email: string; avatar_url?: string }) => void;
 }
 
-export const ShopPage: React.FC<ShopPageProps> = ({ onGoHome, onOpenConverter, user }) => {
+export const ShopPage: React.FC<ShopPageProps> = ({ 
+  onGoHome, 
+  onOpenConverter, 
+  user: propUser,
+  onLoginSuccess 
+}) => {
+  const { session, isLoggedIn, user: authUser } = useAuth();
+  const effectiveUser = authUser || propUser;
+
   // Modal state for Assisted Kit Request & Custom Stitched Product Request
   const [activeModal, setActiveModal] = useState<'assisted-kit' | 'custom-stitched' | null>(null);
 
   // Form State
-  const [customerName, setCustomerName] = useState(user?.name || '');
-  const [customerEmail, setCustomerEmail] = useState(user?.email || '');
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [fabricCount, setFabricCount] = useState<number>(14);
   const [sizePreference, setSizePreference] = useState<string>('Medium (8" × 10")');
+  const [colorCount, setColorCount] = useState<string>('20-30 Colors');
+  const [productStyle, setProductStyle] = useState<'Pattern Only' | 'Completed Product'>('Completed Product');
+  const [isFramed, setIsFramed] = useState<boolean>(true);
+  const [framingOption, setFramingOption] = useState<string>('Museum Framed & Matted (With Glass)');
+  const [deliveryAddress, setDeliveryAddress] = useState<string>('');
+  const [phone, setPhone] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
-  const [framingOption, setFramingOption] = useState<string>('Stretched in Wooden Hoop');
   
   // Submission status
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // Auth modal prompt if user is guest when submitting
+  const [authModalConfig, setAuthModalConfig] = useState<{
+    isOpen: boolean;
+    defaultTab: 'login' | 'signup';
+    customTitle?: string;
+    customSubtitle?: string;
+  } | null>(null);
+
   const resetForm = () => {
     setImagePreview(null);
+    setSizePreference('Medium (8" × 10")');
+    setColorCount('20-30 Colors');
+    setProductStyle('Completed Product');
+    setIsFramed(true);
+    setFramingOption('Museum Framed & Matted (With Glass)');
+    setDeliveryAddress('');
+    setPhone('');
     setNotes('');
     setErrorMessage(null);
     setIsSuccess(false);
@@ -52,9 +82,15 @@ export const ShopPage: React.FC<ShopPageProps> = ({ onGoHome, onOpenConverter, u
 
   const handleOpenModal = (type: 'assisted-kit' | 'custom-stitched') => {
     resetForm();
-    if (user) {
-      setCustomerName(user.name || '');
-      setCustomerEmail(user.email || '');
+    if (type === 'assisted-kit') {
+      setSizePreference('Medium (8" × 10")');
+      setColorCount('20-30 Colors');
+      setProductStyle('Completed Product');
+    } else {
+      setSizePreference('Medium (8" × 10")');
+      setColorCount('26-40 Threads');
+      setIsFramed(true);
+      setFramingOption('Museum Framed & Matted (With Glass)');
     }
     setActiveModal(type);
   };
@@ -77,43 +113,101 @@ export const ShopPage: React.FC<ShopPageProps> = ({ onGoHome, onOpenConverter, u
 
   const handleSubmitRequest = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!customerEmail.trim() || !customerName.trim()) {
-      setErrorMessage('Please provide your name and email address.');
+    if (!deliveryAddress.trim()) {
+      setErrorMessage('Please provide your delivery address.');
+      return;
+    }
+    if (!phone.trim()) {
+      setErrorMessage('Please provide a contact phone number for delivery updates.');
+      return;
+    }
+
+    const activeUserId = session?.user?.id || effectiveUser?.id;
+    const activeUserEmail = session?.user?.email || effectiveUser?.email;
+
+    // Login check: guests get login/signup prompt at this point
+    if (!activeUserId && !activeUserEmail) {
+      setAuthModalConfig({
+        isOpen: true,
+        defaultTab: 'login',
+        customTitle: activeModal === 'assisted-kit' ? 'Log in to Request a Kit' : 'Log in to Request Stitched Art',
+        customSubtitle: 'Please log in or create a free account to place your custom order and receive quotes in your dashboard.',
+      });
       return;
     }
 
     setIsSubmitting(true);
     setErrorMessage(null);
 
-    const isKit = activeModal === 'assisted-kit';
-    const requestTitle = isKit 
-      ? `Assisted Custom Kit Request (${sizePreference}, ${fabricCount}ct)`
-      : `Bespoke Hand-Stitched Art Commission (${sizePreference}, ${framingOption})`;
-
-    const descriptionDetails = [
-      `Type: ${isKit ? 'Assisted Physical Kit Request' : 'Finished Hand-Stitched Art'}`,
-      `Size Preference: ${sizePreference}`,
-      isKit ? `Fabric Count: ${fabricCount}ct Aida` : `Finishing Option: ${framingOption}`,
-      notes ? `Customer Notes: ${notes}` : null,
-      imagePreview ? '[Photo Attached by Customer]' : '[No Photo Attached - Waiting for Email Followup]'
-    ].filter(Boolean).join('\n');
-
     try {
-      await createCustomStitchOrder({
-        userId: user?.id,
-        userEmail: customerEmail.trim(),
-        customerName: customerName.trim(),
-        title: requestTitle,
-        description: descriptionDetails,
-        estimatedPrice: isKit ? 38.00 : 120.00,
-        sourceImageUrl: imagePreview || undefined
-      });
+      let finalPhotoUrl = imagePreview || '';
+      if (finalPhotoUrl && (finalPhotoUrl.startsWith('data:') || finalPhotoUrl.startsWith('blob:'))) {
+        try {
+          const uId = activeUserId || activeUserEmail || 'user';
+          const uploaded = await uploadOriginalPhotoToSupabase(finalPhotoUrl, 'marketplace_request', uId);
+          if (uploaded) finalPhotoUrl = uploaded;
+        } catch (e) {
+          console.warn('Storage upload notice:', e);
+        }
+      }
 
-      setIsSuccess(true);
+      if (activeModal === 'assisted-kit') {
+        // Flow 2: Assisted kit request
+        const res = await createOrderRequest({
+          userId: activeUserId,
+          userEmail: activeUserEmail,
+          orderType: 'custom_kit_assisted',
+          requestDetails: {
+            photo_url: finalPhotoUrl,
+            pattern_result_url: '',
+            size: sizePreference,
+            color_count: colorCount,
+            stitch_count: null,
+            product_style: productStyle,
+            delivery_address: deliveryAddress.trim(),
+            phone: phone.trim(),
+            customer_notes: notes.trim(),
+            customer_name: effectiveUser?.name || '',
+            customer_email: activeUserEmail || '',
+          }
+        });
+
+        if (res.success) {
+          setIsSuccess(true);
+        } else {
+          setErrorMessage(res.error?.message || 'Failed to submit quote request. Please try again.');
+        }
+      } else if (activeModal === 'custom-stitched') {
+        // Flow 3: Custom stitched product request
+        const res = await createOrderRequest({
+          userId: activeUserId,
+          userEmail: activeUserEmail,
+          orderType: 'custom_stitched',
+          requestDetails: {
+            photo_url: finalPhotoUrl,
+            pattern_result_url: '',
+            size: sizePreference,
+            color_count: colorCount,
+            stitch_count: null,
+            is_framed: isFramed,
+            framing_option: isFramed ? framingOption : 'Unframed (Finished Edges)',
+            delivery_address: deliveryAddress.trim(),
+            phone: phone.trim(),
+            customer_notes: notes.trim(),
+            customer_name: effectiveUser?.name || '',
+            customer_email: activeUserEmail || '',
+          }
+        });
+
+        if (res.success) {
+          setIsSuccess(true);
+        } else {
+          setErrorMessage(res.error?.message || 'Failed to submit quote request. Please try again.');
+        }
+      }
     } catch (err: any) {
-      console.error('Failed to submit custom quote request:', err);
-      // Still show success gracefully if network or table constraints arise
-      setIsSuccess(true);
+      console.error('Failed to submit quote request:', err);
+      setErrorMessage(err?.message || 'An error occurred while submitting your quote request.');
     } finally {
       setIsSubmitting(false);
     }
@@ -317,22 +411,64 @@ export const ShopPage: React.FC<ShopPageProps> = ({ onGoHome, onOpenConverter, u
             {/* Modal Body */}
             <div className="p-6 sm:p-8">
               {isSuccess ? (
-                <div className="text-center py-6">
-                  <div className="w-16 h-16 rounded-full bg-[#E8EFE5] text-[#3D5239] flex items-center justify-center mx-auto mb-4">
-                    <CheckCircle2 className="w-8 h-8" />
+                <div className="text-center py-6 space-y-4">
+                  <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto shadow-inner">
+                    <CheckCircle2 className="w-10 h-10" />
                   </div>
-                  <h3 className="text-xl font-bold text-[#1D231E] mb-2">
-                    Request Received!
-                  </h3>
-                  <p className="text-xs text-[#5A6659] max-w-md mx-auto leading-relaxed mb-6">
-                    Thank you, <strong className="text-[#1D231E]">{customerName}</strong>. We have received your custom order inquiry. Our studio team will review your specifications and send a tailored quote to <strong className="text-[#1D231E]">{customerEmail}</strong> within 24 hours.
-                  </p>
-                  <button
-                    onClick={() => setActiveModal(null)}
-                    className="px-6 py-2.5 bg-[#1D231E] hover:bg-[#323D34] text-white text-xs font-bold rounded-full transition-colors cursor-pointer"
-                  >
-                    Done
-                  </button>
+                  
+                  <div className="space-y-2">
+                    <h4 className="text-xl font-bold text-[#1D231E]">
+                      Order Received
+                    </h4>
+                    <p className="text-sm font-medium text-[#2D382E] max-w-md mx-auto leading-relaxed bg-white border border-[#E8E1D2] p-4 rounded-2xl">
+                      Order received — we'll confirm final pricing and delivery charges in your dashboard within 24-48 hours.
+                    </p>
+                  </div>
+
+                  <div className="bg-[#F3EDE0] p-4 rounded-2xl text-left text-xs space-y-2 border border-[#E2D8C3] max-w-md mx-auto">
+                    <div className="flex justify-between">
+                      <span className="text-[#6B7869]">Order Type:</span>
+                      <span className="font-semibold text-[#1D231E]">
+                        {activeModal === 'assisted-kit' ? 'Assisted Custom Kit' : 'Custom Hand-Stitched Art'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[#6B7869]">Size Preference:</span>
+                      <span className="font-semibold text-[#1D231E]">{sizePreference}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[#6B7869]">Colors:</span>
+                      <span className="font-semibold text-[#1D231E]">{colorCount}</span>
+                    </div>
+                    {activeModal === 'assisted-kit' ? (
+                      <div className="flex justify-between">
+                        <span className="text-[#6B7869]">Product Style:</span>
+                        <span className="font-semibold text-[#1D231E]">{productStyle}</span>
+                      </div>
+                    ) : (
+                      <div className="flex justify-between">
+                        <span className="text-[#6B7869]">Framing:</span>
+                        <span className="font-semibold text-[#1D231E]">
+                          {isFramed ? framingOption : 'Unframed'}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex justify-between">
+                      <span className="text-[#6B7869]">Status:</span>
+                      <span className="font-semibold text-[#E06C38] bg-[#E06C38]/10 px-2 py-0.5 rounded">
+                        Pending Quote
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="pt-4 flex items-center justify-center gap-3">
+                    <button
+                      onClick={() => setActiveModal(null)}
+                      className="px-6 py-2.5 bg-[#1D231E] hover:bg-[#323D34] text-white text-xs font-bold rounded-full transition-colors cursor-pointer"
+                    >
+                      Done
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <form onSubmit={handleSubmitRequest} className="space-y-4">
@@ -344,37 +480,10 @@ export const ShopPage: React.FC<ShopPageProps> = ({ onGoHome, onOpenConverter, u
                     </div>
                   )}
 
-                  {/* Customer Information */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold text-[#1D231E] mb-1">Your Full Name *</label>
-                      <input
-                        type="text"
-                        required
-                        value={customerName}
-                        onChange={(e) => setCustomerName(e.target.value)}
-                        placeholder="e.g. Clara Oswald"
-                        className="w-full px-3.5 py-2.5 bg-white border border-[#D5CDC0] rounded-xl text-xs text-[#1D231E] focus:outline-none focus:border-[#E06C38]"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-[#1D231E] mb-1">Email Address *</label>
-                      <input
-                        type="email"
-                        required
-                        value={customerEmail}
-                        onChange={(e) => setCustomerEmail(e.target.value)}
-                        placeholder="e.g. clara@example.com"
-                        className="w-full px-3.5 py-2.5 bg-white border border-[#D5CDC0] rounded-xl text-xs text-[#1D231E] focus:outline-none focus:border-[#E06C38]"
-                      />
-                    </div>
-                  </div>
-
                   {/* Photo Upload Area */}
                   <div>
                     <label className="block text-xs font-bold text-[#1D231E] mb-1">
-                      Upload Reference Image (Optional)
+                      Upload Photo / Image <span className="text-rose-500">*</span>
                     </label>
                     <div className="border-2 border-dashed border-[#D5CDC0] hover:border-[#E06C38] bg-white rounded-2xl p-4 text-center relative transition-colors">
                       {imagePreview ? (
@@ -385,8 +494,8 @@ export const ShopPage: React.FC<ShopPageProps> = ({ onGoHome, onOpenConverter, u
                             className="w-16 h-16 rounded-xl object-cover border border-[#E8E1D2]" 
                           />
                           <div className="flex-1 min-w-0">
-                            <span className="text-xs font-bold text-[#1D231E] block truncate">Image attached</span>
-                            <span className="text-[10px] text-[#70806E]">Ready for studio conversion</span>
+                            <span className="text-xs font-bold text-[#1D231E] block truncate">Photo attached</span>
+                            <span className="text-[10px] text-[#70806E]">Ready for studio review</span>
                           </div>
                           <button
                             type="button"
@@ -402,7 +511,7 @@ export const ShopPage: React.FC<ShopPageProps> = ({ onGoHome, onOpenConverter, u
                           <p className="text-xs font-semibold text-[#1D231E]">
                             Click or drag to attach your photo
                           </p>
-                          <p className="text-[10px] text-[#70806E] mt-0.5">JPG, PNG up to 10MB</p>
+                          <p className="text-[10px] text-[#70806E] mt-0.5">JPG, PNG, WebP up to 10MB</p>
                           <input
                             type="file"
                             accept="image/*"
@@ -414,62 +523,161 @@ export const ShopPage: React.FC<ShopPageProps> = ({ onGoHome, onOpenConverter, u
                     </div>
                   </div>
 
-                  {/* Size & Options */}
+                  {/* Size & Color Selection */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-bold text-[#1D231E] mb-1">Estimated Size</label>
+                      <label className="block text-xs font-bold text-[#1D231E] mb-1">Size</label>
                       <select
                         value={sizePreference}
                         onChange={(e) => setSizePreference(e.target.value)}
                         className="w-full px-3 py-2.5 bg-white border border-[#D5CDC0] rounded-xl text-xs text-[#1D231E] focus:outline-none focus:border-[#E06C38] cursor-pointer"
                       >
-                        <option value="Small (5&quot; × 7&quot; / 6&quot; hoop)">Small (5" × 7" / 6" hoop)</option>
-                        <option value="Medium (8&quot; × 10&quot; / 8&quot; hoop)">Medium (8" × 10" / 8" hoop)</option>
-                        <option value="Large (11&quot; × 14&quot; / 10&quot; hoop)">Large (11" × 14" / 10" hoop)</option>
-                        <option value="Extra Large (16&quot; × 20&quot;+)">Extra Large (16" × 20"+)</option>
+                        <option value="Small (5&quot; × 7&quot;)">Small (5" × 7")</option>
+                        <option value="Medium (8&quot; × 10&quot;)">Medium (8" × 10")</option>
+                        <option value="Large (11&quot; × 14&quot;)">Large (11" × 14")</option>
+                        <option value="Extra Large (16&quot; × 20&quot;)">Extra Large (16" × 20")</option>
+                        <option value="Custom Size">Custom Size</option>
                       </select>
                     </div>
 
-                    {activeModal === 'assisted-kit' ? (
-                      <div>
-                        <label className="block text-xs font-bold text-[#1D231E] mb-1">Fabric Count</label>
-                        <select
-                          value={fabricCount}
-                          onChange={(e) => setFabricCount(Number(e.target.value))}
-                          className="w-full px-3 py-2.5 bg-white border border-[#D5CDC0] rounded-xl text-xs text-[#1D231E] focus:outline-none focus:border-[#E06C38] cursor-pointer"
+                    <div>
+                      <label className="block text-xs font-bold text-[#1D231E] mb-1">Color Count</label>
+                      <select
+                        value={colorCount}
+                        onChange={(e) => setColorCount(e.target.value)}
+                        className="w-full px-3 py-2.5 bg-white border border-[#D5CDC0] rounded-xl text-xs text-[#1D231E] focus:outline-none focus:border-[#E06C38] cursor-pointer"
+                      >
+                        {activeModal === 'assisted-kit' ? (
+                          <>
+                            <option value="12-18 Colors (Beginner Friendly)">12-18 Colors (Simple & Clean)</option>
+                            <option value="20-30 Colors">20-30 Colors (Rich & Detailed)</option>
+                            <option value="32-45 Colors">32-45 Colors (High Precision)</option>
+                            <option value="50+ Colors">50+ Colors (Studio Realism)</option>
+                          </>
+                        ) : (
+                          <>
+                            <option value="15-25 Threads">15-25 Threads (Natural Palette)</option>
+                            <option value="26-40 Threads">26-40 Threads (Detailed Heritage)</option>
+                            <option value="40+ Threads">40+ Threads (Masterpiece Ultra)</option>
+                          </>
+                        )}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Flow-Specific Options */}
+                  {activeModal === 'assisted-kit' ? (
+                    <div>
+                      <label className="block text-xs font-bold text-[#1D231E] mb-1">Product Style</label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setProductStyle('Completed Product')}
+                          className={`p-3 rounded-xl border text-xs font-semibold flex items-center justify-between transition-all cursor-pointer ${
+                            productStyle === 'Completed Product'
+                              ? 'border-[#E06C38] bg-[#E06C38]/10 text-[#E06C38]'
+                              : 'border-[#D5CDC0] bg-white text-[#1D231E] hover:bg-[#FAF6EE]'
+                          }`}
                         >
-                          <option value={11}>11ct Aida (Beginner friendly)</option>
-                          <option value={14}>14ct Aida (Most popular / standard)</option>
-                          <option value={16}>16ct Aida (Crisp detail)</option>
-                          <option value={18}>18ct Aida (Fine detail)</option>
-                        </select>
-                      </div>
-                    ) : (
-                      <div>
-                        <label className="block text-xs font-bold text-[#1D231E] mb-1">Finishing & Framing</label>
-                        <select
-                          value={framingOption}
-                          onChange={(e) => setFramingOption(e.target.value)}
-                          className="w-full px-3 py-2.5 bg-white border border-[#D5CDC0] rounded-xl text-xs text-[#1D231E] focus:outline-none focus:border-[#E06C38] cursor-pointer"
+                          <span>Full Physical Kit</span>
+                          {productStyle === 'Completed Product' && <Check className="w-4 h-4" />}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setProductStyle('Pattern Only')}
+                          className={`p-3 rounded-xl border text-xs font-semibold flex items-center justify-between transition-all cursor-pointer ${
+                            productStyle === 'Pattern Only'
+                              ? 'border-[#E06C38] bg-[#E06C38]/10 text-[#E06C38]'
+                              : 'border-[#D5CDC0] bg-white text-[#1D231E] hover:bg-[#FAF6EE]'
+                          }`}
                         >
-                          <option value="Stretched in Wooden Hoop">Stretched in Wooden Hoop</option>
-                          <option value="Custom Wood Frame with Glass">Custom Wood Frame with Glass</option>
-                          <option value="Unframed (Ironed with Finished Edges)">Unframed (Ironed & Backed)</option>
-                        </select>
+                          <span>Pattern Only (Digital PDF)</span>
+                          {productStyle === 'Pattern Only' && <Check className="w-4 h-4" />}
+                        </button>
                       </div>
-                    )}
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-xs font-bold text-[#1D231E] mb-1">Framing & Presentation</label>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-3 bg-white p-2.5 rounded-xl border border-[#D5CDC0]">
+                          <label className="flex items-center gap-2 text-xs font-semibold text-[#1D231E] cursor-pointer">
+                            <input
+                              type="radio"
+                              name="framed"
+                              checked={isFramed}
+                              onChange={() => setIsFramed(true)}
+                              className="accent-[#E06C38]"
+                            />
+                            <span>Framed / Hoop Mounted</span>
+                          </label>
+                          <label className="flex items-center gap-2 text-xs font-semibold text-[#1D231E] cursor-pointer ml-4">
+                            <input
+                              type="radio"
+                              name="framed"
+                              checked={!isFramed}
+                              onChange={() => setIsFramed(false)}
+                              className="accent-[#E06C38]"
+                            />
+                            <span>Unframed (Ironed Cloth)</span>
+                          </label>
+                        </div>
+
+                        {isFramed && (
+                          <select
+                            value={framingOption}
+                            onChange={(e) => setFramingOption(e.target.value)}
+                            className="w-full px-3 py-2.5 bg-white border border-[#D5CDC0] rounded-xl text-xs text-[#1D231E] focus:outline-none focus:border-[#E06C38] cursor-pointer"
+                          >
+                            <option value="Museum Framed & Matted (With Glass)">Museum Framed & Matted (With Anti-Glare Glass)</option>
+                            <option value="Stretched in Bamboo/Wood Hoop">Stretched in Bamboo/Wood Hoop (Ready to Hang)</option>
+                            <option value="Custom Wood Floating Frame">Custom Wood Floating Frame</option>
+                          </select>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Delivery Address */}
+                  <div>
+                    <label className="block text-xs font-bold text-[#1D231E] mb-1">
+                      Delivery Address <span className="text-rose-500">*</span>
+                    </label>
+                    <textarea
+                      required
+                      rows={2}
+                      value={deliveryAddress}
+                      onChange={(e) => setDeliveryAddress(e.target.value)}
+                      placeholder="Street address, Apt/Suite, City, State/Province, Postal Code, Country"
+                      className="w-full px-3.5 py-2 bg-white border border-[#D5CDC0] rounded-xl text-xs text-[#1D231E] focus:outline-none focus:border-[#E06C38]"
+                    />
+                  </div>
+
+                  {/* Phone Number */}
+                  <div>
+                    <label className="block text-xs font-bold text-[#1D231E] mb-1">
+                      Contact Phone Number <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="tel"
+                      required
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="+1 (555) 000-0000"
+                      className="w-full px-3.5 py-2.5 bg-white border border-[#D5CDC0] rounded-xl text-xs text-[#1D231E] focus:outline-none focus:border-[#E06C38]"
+                    />
                   </div>
 
                   {/* Special Instructions */}
                   <div>
                     <label className="block text-xs font-bold text-[#1D231E] mb-1">
-                      Project Notes or Specific Requests
+                      Notes or Specific Requests (Optional)
                     </label>
                     <textarea
-                      rows={3}
+                      rows={2}
                       value={notes}
                       onChange={(e) => setNotes(e.target.value)}
-                      placeholder="Tell us about the recipient, preferred colors, deadline, or questions..."
+                      placeholder="Tell us about deadline, color preferences, dedication text, or questions..."
                       className="w-full px-3.5 py-2 bg-white border border-[#D5CDC0] rounded-xl text-xs text-[#1D231E] focus:outline-none focus:border-[#E06C38]"
                     />
                   </div>
@@ -494,6 +702,9 @@ export const ShopPage: React.FC<ShopPageProps> = ({ onGoHome, onOpenConverter, u
                         </>
                       )}
                     </button>
+                    <p className="text-[11px] text-[#6B7869] text-center mt-2">
+                      No payment required now. You will receive a quote directly in your dashboard.
+                    </p>
                   </div>
 
                 </form>
@@ -502,6 +713,21 @@ export const ShopPage: React.FC<ShopPageProps> = ({ onGoHome, onOpenConverter, u
 
           </div>
         </div>
+      )}
+
+      {/* Auth Modal Triggered if Guest clicks Submit */}
+      {authModalConfig?.isOpen && (
+        <AuthModal
+          isOpen={true}
+          onClose={() => setAuthModalConfig(null)}
+          defaultTab={authModalConfig.defaultTab}
+          customTitle={authModalConfig.customTitle}
+          customSubtitle={authModalConfig.customSubtitle}
+          onLoginSuccess={(u) => {
+            if (onLoginSuccess) onLoginSuccess(u);
+            setAuthModalConfig(null);
+          }}
+        />
       )}
 
     </div>
