@@ -5,6 +5,7 @@ import {
   RotateCcw, 
   ZoomIn, 
   ZoomOut, 
+  Maximize2,
   Sparkles, 
   Eye, 
   Download, 
@@ -38,10 +39,36 @@ export const StitchTrackerModal: React.FC<StitchTrackerModalProps> = ({
   const [loadingPattern, setLoadingPattern] = useState<boolean>(true);
   const [completedStitches, setCompletedStitches] = useState<Set<number>>(new Set());
   const [viewMode, setViewMode] = useState<'tracker' | 'color' | 'symbol'>('tracker');
-  const [zoomLevel, setZoomLevel] = useState<number>(1);
+  const [zoomMultiplier, setZoomMultiplier] = useState<number>(1);
   const [filterDmcCode, setFilterDmcCode] = useState<string | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [containerSize, setContainerSize] = useState<{ width: number; height: number }>({ width: 600, height: 420 });
+
+  // Measure canvas viewport container dimensions dynamically
+  useEffect(() => {
+    if (!isOpen) return;
+    const updateSize = () => {
+      if (containerRef.current) {
+        const { clientWidth, clientHeight } = containerRef.current;
+        if (clientWidth > 0 && clientHeight > 0) {
+          setContainerSize({ width: clientWidth, height: clientHeight });
+        }
+      }
+    };
+    updateSize();
+    const ro = new ResizeObserver(updateSize);
+    if (containerRef.current) {
+      ro.observe(containerRef.current);
+    }
+    return () => ro.disconnect();
+  }, [isOpen]);
+
+  // Reset zoom to 1 (Fit to screen) on new pattern or job
+  useEffect(() => {
+    setZoomMultiplier(1);
+  }, [job.id]);
 
   // Storage key for persisting stitching progress
   const storageKey = `stitch_tracker_job_${job.id}`;
@@ -149,7 +176,7 @@ export const StitchTrackerModal: React.FC<StitchTrackerModalProps> = ({
 
   useEffect(() => {
     drawCanvas();
-  }, [drawCanvas, zoomLevel]);
+  }, [drawCanvas]);
 
   // Canvas Click Handler: Toggle stitch completed status
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -230,6 +257,26 @@ export const StitchTrackerModal: React.FC<StitchTrackerModalProps> = ({
   const completedCount = completedStitches.size;
   const progressPercentage = Math.min(100, Math.round((completedCount / Math.max(1, totalStitches)) * 100));
   const cardTitle = job.title || job.title_name || job.filename || `Pattern #${job.id}`;
+
+  // Aspect-ratio preserving fit dimensions based on measured container size
+  const padding = 32;
+  const availWidth = Math.max(120, containerSize.width - padding);
+  const availHeight = Math.max(120, containerSize.height - padding);
+
+  const patternWidth = pattern?.widthStitches || (job.grid_width || 60);
+  const patternHeight = pattern?.heightStitches || (job.grid_height || 60);
+  const patternAspectRatio = patternWidth / Math.max(1, patternHeight);
+
+  let baseFitWidth = availWidth;
+  let baseFitHeight = baseFitWidth / patternAspectRatio;
+
+  if (baseFitHeight > availHeight) {
+    baseFitHeight = availHeight;
+    baseFitWidth = baseFitHeight * patternAspectRatio;
+  }
+
+  const displayWidth = Math.max(40, Math.round(baseFitWidth * zoomMultiplier));
+  const displayHeight = Math.max(40, Math.round(baseFitHeight * zoomMultiplier));
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/65 backdrop-blur-md animate-fade-in">
@@ -375,21 +422,34 @@ export const StitchTrackerModal: React.FC<StitchTrackerModalProps> = ({
               {/* Zoom Controls */}
               <div className="flex items-center gap-1 bg-[#FAF6EE] p-1 rounded-xl border border-[#E8E1D2] text-xs">
                 <button
-                  onClick={() => setZoomLevel(prev => Math.max(0.75, prev - 0.25))}
-                  className="p-1.5 hover:bg-white text-[#5A6659] rounded-lg transition-colors cursor-pointer"
+                  onClick={() => setZoomMultiplier(prev => Math.max(0.5, Number((prev - 0.25).toFixed(2))))}
+                  className="p-1.5 hover:bg-white text-[#5A6659] hover:text-[#1D231E] rounded-lg transition-colors cursor-pointer"
                   title="Zoom out"
                 >
                   <ZoomOut className="w-3.5 h-3.5" />
                 </button>
-                <span className="px-2 font-bold text-[#1D231E] text-[11px]">
-                  {Math.round(zoomLevel * 100)}%
+                <span className="px-2 font-bold text-[#1D231E] text-[11px] min-w-[42px] text-center">
+                  {Math.round(zoomMultiplier * 100)}%
                 </span>
                 <button
-                  onClick={() => setZoomLevel(prev => Math.min(2.5, prev + 0.25))}
-                  className="p-1.5 hover:bg-white text-[#5A6659] rounded-lg transition-colors cursor-pointer"
+                  onClick={() => setZoomMultiplier(prev => Math.min(4.0, Number((prev + 0.25).toFixed(2))))}
+                  className="p-1.5 hover:bg-white text-[#5A6659] hover:text-[#1D231E] rounded-lg transition-colors cursor-pointer"
                   title="Zoom in"
                 >
                   <ZoomIn className="w-3.5 h-3.5" />
+                </button>
+                <div className="w-px h-3.5 bg-[#E8E1D2] mx-0.5" />
+                <button
+                  onClick={() => setZoomMultiplier(1)}
+                  className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                    zoomMultiplier === 1
+                      ? 'bg-[#3D5239] text-white shadow-xs'
+                      : 'bg-white text-[#5A6659] hover:text-[#1D231E] border border-[#E8E1D2]'
+                  }`}
+                  title="Fit entire pattern to screen"
+                >
+                  <Maximize2 className="w-3 h-3" />
+                  <span>Fit</span>
                 </button>
               </div>
 
@@ -404,9 +464,15 @@ export const StitchTrackerModal: React.FC<StitchTrackerModalProps> = ({
                   {viewMode === 'color' && 'Full DMC Color Cross-Stitch View'}
                   {viewMode === 'symbol' && 'Black & White Printable Symbol Chart'}
                 </span>
+                <span className="text-[11px] text-[#6B7869]">
+                  {pattern ? `${pattern.widthStitches} × ${pattern.heightStitches} stitches` : ''}
+                </span>
               </div>
 
-              <div className="relative min-h-[360px] max-h-[500px] overflow-auto bg-[#FAF6EE] border border-[#E0D8C8] rounded-xl flex items-center justify-center p-4">
+              <div 
+                ref={containerRef}
+                className="relative min-h-[380px] max-h-[520px] h-[52vh] overflow-auto bg-[#FAF6EE] border border-[#E0D8C8] rounded-xl flex p-3"
+              >
                 {loadingPattern && (
                   <div className="absolute inset-0 z-10 bg-[#FAF6EE]/90 backdrop-blur-xs flex flex-col items-center justify-center p-8 text-center text-[#5A6659]">
                     <Loader2 className="w-8 h-8 text-[#E06C38] animate-spin mb-3" />
@@ -415,20 +481,21 @@ export const StitchTrackerModal: React.FC<StitchTrackerModalProps> = ({
                 )}
 
                 {pattern ? (
-                  <div 
-                    style={{ transform: `scale(${zoomLevel})`, transformOrigin: 'center center' }}
-                    className="transition-transform duration-200"
-                  >
+                  <div className="m-auto flex items-center justify-center shrink-0">
                     <canvas
                       ref={setCanvasRef}
                       onClick={handleCanvasClick}
-                      className={`rounded shadow-md border border-[#1D231E]/20 transition-all ${
+                      style={{
+                        width: `${displayWidth}px`,
+                        height: `${displayHeight}px`,
+                      }}
+                      className={`rounded shadow-md border border-[#1D231E]/20 transition-all select-none ${
                         viewMode === 'tracker' ? 'cursor-pointer hover:ring-2 hover:ring-[#E06C38]' : ''
                       }`}
                     />
                   </div>
                 ) : !loadingPattern ? (
-                  <div className="text-center p-6 text-[#5A6659] text-xs">
+                  <div className="m-auto text-center p-6 text-[#5A6659] text-xs">
                     Failed to load pattern chart for tracking.
                   </div>
                 ) : null}

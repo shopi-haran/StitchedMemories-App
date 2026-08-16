@@ -334,8 +334,8 @@ export function renderPatternCanvas(
 
   const { widthStitches, heightStitches, pixelDmcMap } = pattern;
   
-  // Cell size calculation based on container resolution
-  const cellSize = Math.max(8, Math.min(32, Math.floor(800 / widthStitches)));
+  // Cell size calculation based on high-DPI pattern resolution for crisp symbols
+  const cellSize = Math.max(16, Math.min(36, Math.floor(1200 / widthStitches)));
   const width = widthStitches * cellSize;
   const height = heightStitches * cellSize;
 
