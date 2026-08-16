@@ -244,13 +244,10 @@ export const PricingSection: React.FC<PricingSectionProps> = ({ onSelectPlan }) 
                   <Image className="w-4 h-4 text-[#E06C38] shrink-0 mt-0.5" />
                   <span><strong className="text-[#E06C38]">Live Thread Color Editor & Swapper</strong> (customize & swap pattern thread shades in real-time)</span>
                 </li>
-                {/* 15% Discount on Shop Purchases - Hidden until e-commerce store goes live */}
-                {/* 
                 <li className="flex items-start gap-2.5">
                   <Percent className="w-4 h-4 text-[#E06C38] shrink-0 mt-0.5" />
-                  <span><strong className="text-[#E06C38]">15% Discount on all purchases</strong> in the StitchedMemories Shop</span>
+                  <span><strong className="text-[#E06C38]">15% Discount on all purchases</strong> in the Marketplace</span>
                 </li>
-                */}
                 <li className="flex items-start gap-2.5">
                   <RefreshCw className="w-4 h-4 text-[#93A28F] shrink-0 mt-0.5" />
                   <span><strong className="text-white">DMC ↔ Anchor Instant Conversion</strong> & dual brand mapping</span>

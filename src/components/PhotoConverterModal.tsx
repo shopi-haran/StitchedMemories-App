@@ -170,12 +170,6 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
     setCompletedStitches(new Set());
     setViewMode('color');
     setPattern(null);
-    setIsOrderModalOpen(false);
-    setOrderPlaced(false);
-    setCustomerName('');
-    setShippingAddress('');
-    setCustomerEmail('');
-    setOrderRef('');
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -188,37 +182,6 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
   const handleClose = () => {
     resetSessionState();
     onClose();
-  };
-
-  // Order Kit & Supplies Modal State
-  const [isOrderModalOpen, setIsOrderModalOpen] = useState<boolean>(false);
-  const [orderPlaced, setOrderPlaced] = useState<boolean>(false);
-  const [customerName, setCustomerName] = useState<string>('');
-  const [shippingAddress, setShippingAddress] = useState<string>('');
-  const [customerEmail, setCustomerEmail] = useState<string>('');
-  const [orderRef, setOrderRef] = useState<string>('');
-
-  useEffect(() => {
-    if (effectiveUser) {
-      if (effectiveUser.name && !customerName) setCustomerName(effectiveUser.name);
-      if (effectiveUser.email && !customerEmail) setCustomerEmail(effectiveUser.email);
-    }
-  }, [effectiveUser]);
-
-  const handlePlaceOrder = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!effectiveUser) {
-      setAuthModalConfig({
-        isOpen: true,
-        defaultTab: 'signup',
-        customTitle: 'Create an account to complete your order',
-        customSubtitle: 'Please log in or sign up to finalize your stitching supplies order.'
-      });
-      return;
-    }
-    const generatedRef = `STM-${Math.floor(100000 + Math.random() * 900000)}`;
-    setOrderRef(generatedRef);
-    setOrderPlaced(true);
   };
 
   // View Mode: 'color' (Color Chart), 'symbol' (B&W Printable Chart), 'tracker' (Interactive Stitch Tracker)
@@ -1226,21 +1189,6 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
 
               <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
                 <button
-                  onClick={async () => {
-                    if (!pattern) return;
-                    await executeSaveWorkflow();
-                    setOrderPlaced(false);
-                    setIsOrderModalOpen(true);
-                  }}
-                  disabled={!pattern}
-                  className="w-full sm:w-auto px-5 py-2.5 rounded-full bg-[#1D231E] hover:bg-[#2C352E] disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer"
-                  title="Order thread floss, Aida cloth, needles & hoops for this pattern"
-                >
-                  <ShoppingBag className="w-4 h-4 text-[#E06C38]" />
-                  <span>Order Kit & Supplies</span>
-                </button>
-
-                <button
                   onClick={() => handleDownloadChart('color')}
                   disabled={!pattern || isExportingPdf}
                   className="w-full sm:w-auto px-6 py-2.5 rounded-full bg-[#E06C38] hover:bg-[#d05c28] disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer"
@@ -1260,144 +1208,6 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
         </div>
 
       </div>
-
-      {/* Order Custom Kit & Supplies Modal */}
-      {isOrderModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-[#FAF6EE] border border-[#D5CDC0] rounded-2xl max-w-lg w-full p-6 shadow-2xl relative text-[#1D231E]">
-            <button
-              onClick={() => setIsOrderModalOpen(false)}
-              className="absolute top-4 right-4 text-[#6B7869] hover:text-[#1D231E] p-1.5 rounded-full hover:bg-black/5 transition-colors cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            {!orderPlaced ? (
-              <div>
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 rounded-full bg-[#E06C38]/15 text-[#E06C38] flex items-center justify-center">
-                    <ShoppingBag className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="font-serif text-lg font-bold text-[#1D231E]">Order Stitching Kit & Supplies</h3>
-                    <p className="text-xs text-[#505C4F]">Custom supplies tailored to your converted pattern</p>
-                  </div>
-                </div>
-
-                {/* Kit Itemized Overview */}
-                <div className="bg-white border border-[#C5D3C2] rounded-xl p-4 mb-4 text-xs space-y-2.5">
-                  <div className="flex justify-between items-center pb-2 border-b border-[#E5EDE2]">
-                    <span className="font-bold text-[#1D231E]">Converted Pattern:</span>
-                    <span className="text-[#E06C38] font-semibold">{customPhotoName}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-[#4A544A]">
-                    <span className="flex items-center gap-1.5">
-                      <Package className="w-3.5 h-3.5 text-[#E06C38]" />
-                      <span>{brand} Floss Skeins ({pattern?.flossList.length || 0} Colors)</span>
-                    </span>
-                    <span className="font-semibold">${((pattern?.flossList.length || 12) * 1.25).toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-[#4A544A]">
-                    <span className="flex items-center gap-1.5">
-                      <Ruler className="w-3.5 h-3.5 text-[#E06C38]" />
-                      <span>Custom {fabricCount}ct Aida Cloth ({((gridWidth / fabricCount) + 4).toFixed(1)}" × {((pattern ? (gridWidth * (pattern.heightStitches / pattern.widthStitches)) : gridWidth) / fabricCount + 4).toFixed(1)}")</span>
-                    </span>
-                    <span className="font-semibold">$8.50</span>
-                  </div>
-                  <div className="flex justify-between items-center text-[#4A544A]">
-                    <span>Gold-Eye Tapestry Needles (5 Pack)</span>
-                    <span className="font-semibold">$3.00</span>
-                  </div>
-                  <div className="flex justify-between items-center text-[#4A544A]">
-                    <span>Polished Wooden Hoop (8")</span>
-                    <span className="font-semibold">$6.50</span>
-                  </div>
-                  <div className="flex justify-between items-center text-[#4A544A]">
-                    <span>Printed Color Pattern Booklet</span>
-                    <span className="font-semibold">$4.00</span>
-                  </div>
-                  <div className="pt-2 border-t border-[#E5EDE2] flex justify-between items-center font-bold text-sm text-[#1D231E]">
-                    <span>Estimated Total (Free Shipping)</span>
-                    <span className="text-[#E06C38]">
-                      ${(((pattern?.flossList.length || 12) * 1.25) + 8.50 + 3.00 + 6.50 + 4.00).toFixed(2)}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Shipping & Checkout Form */}
-                <form onSubmit={handlePlaceOrder} className="space-y-3">
-                  <div>
-                    <label className="block text-[11px] font-bold text-[#505C4F] mb-1">Full Name</label>
-                    <input
-                      type="text"
-                      required
-                      value={customerName}
-                      onChange={(e) => setCustomerName(e.target.value)}
-                      placeholder="e.g. Eleanor Vance"
-                      className="w-full px-3 py-2 rounded-lg border border-[#C5D3C2] bg-white text-xs text-[#1D231E] focus:outline-none focus:border-[#E06C38]"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-bold text-[#505C4F] mb-1">Shipping Address</label>
-                    <input
-                      type="text"
-                      required
-                      value={shippingAddress}
-                      onChange={(e) => setShippingAddress(e.target.value)}
-                      placeholder="Street address, city, state, zip code"
-                      className="w-full px-3 py-2 rounded-lg border border-[#C5D3C2] bg-white text-xs text-[#1D231E] focus:outline-none focus:border-[#E06C38]"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-bold text-[#505C4F] mb-1">Email Address</label>
-                    <input
-                      type="email"
-                      required
-                      value={customerEmail}
-                      onChange={(e) => setCustomerEmail(e.target.value)}
-                      placeholder="name@example.com"
-                      className="w-full px-3 py-2 rounded-lg border border-[#C5D3C2] bg-white text-xs text-[#1D231E] focus:outline-none focus:border-[#E06C38]"
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    className="w-full mt-4 py-3 px-4 rounded-full bg-[#E06C38] hover:bg-[#d05c28] text-white text-xs font-bold flex items-center justify-center gap-2 shadow-md transition-colors cursor-pointer"
-                  >
-                    <CreditCard className="w-4 h-4" />
-                    <span>Place Direct Order for Supplies Kit</span>
-                  </button>
-                </form>
-              </div>
-            ) : (
-              <div className="text-center py-4">
-                <div className="w-12 h-12 rounded-full bg-[#E06C38]/20 text-[#E06C38] flex items-center justify-center mx-auto mb-3">
-                  <CheckCircle2 className="w-7 h-7" />
-                </div>
-                <h3 className="font-serif text-xl font-bold text-[#1D231E] mb-1">Order Placed Successfully!</h3>
-                <p className="text-xs text-[#505C4F] mb-3">
-                  Order Reference: <span className="font-mono font-bold text-[#E06C38]">{orderRef}</span>
-                </p>
-                <div className="bg-white border border-[#C5D3C2] rounded-xl p-4 text-xs text-[#4A544A] text-left space-y-1.5 mb-5">
-                  <p><span className="font-bold text-[#1D231E]">Customer:</span> {customerName}</p>
-                  <p><span className="font-bold text-[#1D231E]">Shipping Address:</span> {shippingAddress}</p>
-                  <p><span className="font-bold text-[#1D231E]">Confirmation Email:</span> {customerEmail}</p>
-                  <div className="pt-2 border-t border-[#E5EDE2] flex items-center gap-1.5 text-[#E06C38] font-semibold">
-                    <Truck className="w-4 h-4" />
-                    <span>Estimated Shipping: 3-5 Business Days</span>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setIsOrderModalOpen(false)}
-                  className="px-6 py-2.5 rounded-full bg-[#1D231E] hover:bg-[#2C352E] text-white text-xs font-bold cursor-pointer transition-colors"
-                >
-                  Return to Converter
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* Converter First Upload Guest Login Choice Modal */}
       {showGuestPrompt && (

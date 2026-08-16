@@ -1,9 +1,7 @@
 import React, { useState } from 'react';
-import { Sparkles, BookOpen, ShoppingBag, ShoppingCart, Tag, User, LogIn, UserPlus, LogOut, ChevronDown, Check, Info, MessageSquare, LayoutDashboard } from 'lucide-react';
+import { Sparkles, BookOpen, ShoppingBag, Tag, User, LogIn, UserPlus, LogOut, ChevronDown, Check, Info, MessageSquare, LayoutDashboard } from 'lucide-react';
 import { AuthModal } from './AuthModal';
-import { CartDrawer } from './CartDrawer';
 import { useAuth } from '../context/AuthContext';
-import { useCart } from '../context/CartContext';
 
 interface UserProfile {
   name: string;
@@ -31,7 +29,6 @@ export const Header: React.FC<HeaderProps> = ({
   const { user: authUser, signOut } = useAuth();
   const user = externalUser !== undefined ? externalUser : authUser;
 
-  const { cartCount, isCartOpen, setIsCartOpen } = useCart();
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authDefaultTab, setAuthDefaultTab] = useState<'login' | 'signup'>('login');
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
@@ -118,33 +115,9 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           </nav>
 
-          {/* Right Header Section: Shopping Cart & User Auth (CTA Removed) */}
+          {/* Right Header Section: User Auth */}
           <div className="flex items-center gap-3 sm:gap-4">
             
-            {/* Shopping Cart Icon Button */}
-            <div className="relative group">
-              <button
-                onClick={() => setIsCartOpen(true)}
-                className="relative p-2.5 rounded-full text-[#3A4538] hover:text-[#E06C38] hover:bg-[#E8E1D2]/50 transition-all cursor-pointer flex items-center justify-center border border-[#E8E1D2]/80"
-                aria-label="Shopping Cart"
-                title="View Shopping Cart"
-              >
-                <ShoppingCart className="w-5 h-5" />
-                {/* Cart Badge */}
-                {cartCount > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-[#E06C38] text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center shadow-xs animate-scale-in">
-                    {cartCount > 99 ? '99+' : cartCount}
-                  </span>
-                )}
-              </button>
-
-              {/* Tooltip on Hover */}
-              <div className="absolute right-0 top-full mt-2 w-48 p-2.5 bg-[#1D231E] text-white text-[11px] rounded-xl shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 text-center leading-snug hidden sm:block">
-                Shopping Cart <br />
-                <span className="text-[#93A28F] text-[10px]">{cartCount} items in cart</span>
-              </div>
-            </div>
-
             {/* User Login / Sign Up or Logged In Profile */}
             {user ? (
               /* Logged In User Pill & Dropdown */
@@ -265,14 +238,6 @@ export const Header: React.FC<HeaderProps> = ({
         onClose={() => setIsAuthModalOpen(false)}
         defaultTab={authDefaultTab}
         onLoginSuccess={handleLoginSuccess}
-      />
-
-      {/* Cart Drawer */}
-      <CartDrawer
-        isOpen={isCartOpen}
-        onClose={() => setIsCartOpen(false)}
-        onOpenConverter={onOpenConverter}
-        onNavigateToShop={() => onNavigateToSection('shop-page')}
       />
     </>
   );

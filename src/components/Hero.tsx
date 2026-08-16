@@ -70,10 +70,7 @@ export const Hero: React.FC<HeroProps> = ({ onOpenConverter }) => {
               </button>
 
               <button
-                onClick={() => {
-                  alert("Order Request: Submit your photo and preferences for a custom pattern or a fully finished, hand-stitched ready-to-frame piece!");
-                  onOpenConverter();
-                }}
+                onClick={onOpenConverter}
                 id="hero-custom-order-button"
                 className="inline-flex items-center justify-center gap-2 bg-[#1D231E] hover:bg-[#323D34] text-white font-medium text-base px-7 py-3.5 rounded-full shadow-md transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
               >
