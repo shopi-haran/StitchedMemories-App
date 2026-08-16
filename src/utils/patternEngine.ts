@@ -448,6 +448,177 @@ function isLightColor(hex: string): boolean {
   return luminance > 0.6;
 }
 
+export interface ViewportRenderOptions {
+  mode: 'color' | 'symbol' | 'tracker';
+  config: PatternConfig;
+  completedStitchesSet?: Set<number>;
+  filterDmcCode?: string | null;
+  displayWidth: number;
+  displayHeight: number;
+  canvasX: number;
+  canvasY: number;
+  canvasW: number;
+  canvasH: number;
+  dpr?: number;
+}
+
+// Viewport-aware high-resolution rendering: only renders visible stitches at 1:1 physical device pixels
+export function renderPatternViewportCanvas(
+  canvas: HTMLCanvasElement,
+  pattern: GeneratedPattern,
+  options: ViewportRenderOptions
+) {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  const {
+    mode,
+    config,
+    completedStitchesSet,
+    filterDmcCode,
+    displayWidth,
+    displayHeight,
+    canvasX,
+    canvasY,
+    canvasW,
+    canvasH,
+    dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1,
+  } = options;
+
+  const { widthStitches, heightStitches, pixelDmcMap } = pattern;
+  if (widthStitches <= 0 || heightStitches <= 0 || displayWidth <= 0 || displayHeight <= 0) return;
+
+  // Set canvas backing store to physical pixels
+  const physicalW = Math.max(1, Math.round(canvasW * dpr));
+  const physicalH = Math.max(1, Math.round(canvasH * dpr));
+
+  if (canvas.width !== physicalW || canvas.height !== physicalH) {
+    canvas.width = physicalW;
+    canvas.height = physicalH;
+  }
+
+  // Setup scaling for Retina / HiDPI crispness
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, canvasW, canvasH);
+
+  // Background
+  if (mode === 'symbol') {
+    ctx.fillStyle = '#FFFFFF';
+  } else {
+    ctx.fillStyle = '#FAF6EE';
+  }
+  ctx.fillRect(0, 0, canvasW, canvasH);
+
+  const cellW = displayWidth / widthStitches;
+  const cellH = displayHeight / heightStitches;
+
+  // Compute visible cell range (bounded to grid dimensions)
+  const minCol = Math.max(0, Math.floor(canvasX / cellW));
+  const maxCol = Math.min(widthStitches - 1, Math.ceil((canvasX + canvasW) / cellW));
+  const minRow = Math.max(0, Math.floor(canvasY / cellH));
+  const maxRow = Math.min(heightStitches - 1, Math.ceil((canvasY + canvasH) / cellH));
+
+  // Draw visible stitches
+  for (let y = minRow; y <= maxRow; y++) {
+    for (let x = minCol; x <= maxCol; x++) {
+      const index = y * widthStitches + x;
+      const dmc = pixelDmcMap[index];
+      if (!dmc) continue;
+
+      const isCompleted = completedStitchesSet?.has(index);
+      const isFiltered = Boolean(filterDmcCode && dmc.code === filterDmcCode);
+
+      const px = x * cellW - canvasX;
+      const py = y * cellH - canvasY;
+
+      if (mode === 'color') {
+        ctx.fillStyle = dmc.hex;
+        ctx.fillRect(px, py, cellW, cellH);
+
+        if (config.showSymbols && cellH >= 8) {
+          ctx.fillStyle = isLightColor(dmc.hex) ? '#000000' : '#FFFFFF';
+          const fontSize = Math.max(8, Math.floor(cellH * 0.58));
+          ctx.font = `bold ${fontSize}px system-ui, -apple-system, sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(dmc.symbol, px + cellW / 2, py + cellH / 2);
+        }
+      } else if (mode === 'symbol') {
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(px, py, cellW, cellH);
+        ctx.strokeStyle = '#E0E0E0';
+        ctx.lineWidth = 0.5;
+        ctx.strokeRect(px, py, cellW, cellH);
+
+        ctx.fillStyle = '#000000';
+        const fontSize = Math.max(8, Math.floor(cellH * 0.62));
+        ctx.font = `bold ${fontSize}px system-ui, -apple-system, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(dmc.symbol, px + cellW / 2, py + cellH / 2);
+      } else if (mode === 'tracker') {
+        if (isCompleted) {
+          ctx.fillStyle = '#E8EFE5';
+          ctx.fillRect(px, py, cellW, cellH);
+          ctx.fillStyle = '#2E7D32';
+          const fontSize = Math.max(8, Math.floor(cellH * 0.62));
+          ctx.font = `bold ${fontSize}px system-ui, -apple-system, sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('✓', px + cellW / 2, py + cellH / 2);
+        } else {
+          ctx.fillStyle = dmc.hex;
+          ctx.fillRect(px, py, cellW, cellH);
+
+          if (filterDmcCode && !isFiltered) {
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+            ctx.fillRect(px, py, cellW, cellH);
+          }
+
+          if (cellH >= 8) {
+            ctx.fillStyle = isLightColor(dmc.hex) ? '#000000' : '#FFFFFF';
+            const fontSize = Math.max(8, Math.floor(cellH * 0.58));
+            ctx.font = `bold ${fontSize}px system-ui, -apple-system, sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(dmc.symbol, px + cellW / 2, py + cellH / 2);
+          }
+        }
+      }
+    }
+  }
+
+  // Draw Grid Lines in visible range
+  if (config.showGridLines) {
+    // Vertical grid lines
+    for (let x = minCol; x <= maxCol + 1; x++) {
+      if (x < 0 || x > widthStitches) continue;
+      const isTen = x % 10 === 0;
+      ctx.beginPath();
+      ctx.strokeStyle = isTen ? '#1D231E' : mode === 'symbol' ? '#CCCCCC' : 'rgba(0, 0, 0, 0.18)';
+      ctx.lineWidth = isTen ? (cellH >= 20 ? 2 : 1.5) : (cellH >= 20 ? 0.75 : 0.5);
+      const lineX = x * cellW - canvasX;
+      ctx.moveTo(lineX, Math.max(0, minRow * cellH - canvasY));
+      ctx.lineTo(lineX, Math.min(canvasH, (maxRow + 1) * cellH - canvasY));
+      ctx.stroke();
+    }
+
+    // Horizontal grid lines
+    for (let y = minRow; y <= maxRow + 1; y++) {
+      if (y < 0 || y > heightStitches) continue;
+      const isTen = y % 10 === 0;
+      ctx.beginPath();
+      ctx.strokeStyle = isTen ? '#1D231E' : mode === 'symbol' ? '#CCCCCC' : 'rgba(0, 0, 0, 0.18)';
+      ctx.lineWidth = isTen ? (cellH >= 20 ? 2 : 1.5) : (cellH >= 20 ? 0.75 : 0.5);
+      const lineY = y * cellH - canvasY;
+      ctx.moveTo(Math.max(0, minCol * cellW - canvasX), lineY);
+      ctx.lineTo(Math.min(canvasW, (maxCol + 1) * cellW - canvasX), lineY);
+      ctx.stroke();
+    }
+  }
+}
+
 // Export Pattern Chart as Printable Canvas Data URL
 export function generatePrintableImage(
   pattern: GeneratedPattern,
