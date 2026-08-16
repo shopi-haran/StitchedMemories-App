@@ -56,32 +56,138 @@ export const GALLERY_ITEMS: GalleryItem[] = [
 export const SHOP_KITS: ShopKit[] = [
   {
     id: '1',
-    title: 'Custom Photo Starter Kit',
+    title: 'Custom Photo Heirloom Kit',
     category: 'Full Kit',
     price: '$34.99',
+    numericPrice: 34.99,
     difficulty: 'Beginner',
     imageUrl: dogSplitImg,
-    status: 'Coming Soon',
-    includes: ['Custom Printed Pattern', '14-Count Aida Cloth', 'DMC Pre-sorted Floss', '2 Embroidery Needles', '6" Wooden Hoop']
+    status: 'Best Seller',
+    rating: 4.9,
+    reviewsCount: 128,
+    description: 'Transform your favorite pet or family photo into a physical ready-to-stitch kit with custom pre-sorted DMC thread drops, Zweigart Aida cloth, needles, and a high-contrast chart booklet.',
+    includes: [
+      'Custom Printed Full-Color Pattern Booklet',
+      'Zweigart 14-Count Premium Aida Cloth (12" × 12")',
+      'Genuine DMC Pre-Sorted Stranded Cotton Floss',
+      '2× Bohin France Tapestry Needles (Size 24)',
+      '6" Smooth Solid Beechwood Embroidery Hoop',
+      'Step-by-Step Beginner Stitching Guide'
+    ],
+    dimensions: '12" × 12" fabric (8" hoop)',
+    threadBrand: 'DMC Mouliné Spécial',
+    clothType: 'Zweigart White 14ct Aida'
   },
   {
     id: '2',
-    title: 'Botanical Garden Memory Kit',
+    title: 'Golden Meadow Floral Keepsake Kit',
     category: 'Curated Design',
     price: '$29.99',
+    numericPrice: 29.99,
     difficulty: 'Intermediate',
     imageUrl: weddingMemoryImg,
-    status: 'Coming Soon',
-    includes: ['HD Chart PDF + Printout', 'Zweigart Aida 16ct', 'Full DMC Floss Set', 'Gold-plated Tapestry Needles']
+    status: 'Popular',
+    rating: 4.8,
+    reviewsCount: 94,
+    description: 'A soothing botanical heirloom composition featuring delicate wildflowers, warm amber honey tones, and intricate backstitched details designed by artisan crafters.',
+    includes: [
+      'Laminated Multi-Page Symbol & Color Chart',
+      'Zweigart 16-Count Oatmeal Flecked Aida',
+      '22 Color-Sorted DMC Floss Skein Drops',
+      '2× Gold-Plated Tapestry Needles',
+      '7" Natural Bamboo Tension Hoop'
+    ],
+    dimensions: '10" × 10" finished piece',
+    threadBrand: 'DMC France',
+    clothType: '16ct Oatmeal Aida'
   },
   {
     id: '3',
-    title: 'Essential Stitcher Accessories Box',
-    category: 'Notions',
-    price: '$22.50',
-    difficulty: 'Beginner',
+    title: 'Warm Sunlight Pet Portrait Kit',
+    category: 'Full Kit',
+    price: '$38.50',
+    numericPrice: 38.50,
+    difficulty: 'Intermediate',
     imageUrl: catPortraitImg,
-    status: 'Coming Soon',
-    includes: ['Bohin Needle Set', 'Magnetic Needle Minder', 'Stork Scissors', 'Floss Bobbins (50x)', 'DMC Color Card']
+    status: 'In Stock',
+    rating: 5.0,
+    reviewsCount: 62,
+    description: 'Capture subtle fur textures and vibrant golden-hour highlights with a carefully curated 28-shade DMC gradient palette and tight-weave German canvas.',
+    includes: [
+      'Large Format High-DPI Color Chart with Key',
+      '14-Count Antique White Zweigart Aida (14" × 14")',
+      '28 Individual DMC Floss Bins with Number Tags',
+      'Enamel Magnetic Needle Minder',
+      '8" Ergonomic Beechwood Display Hoop'
+    ],
+    dimensions: '14" × 14" fabric',
+    threadBrand: 'DMC France (100% Egyptian Cotton)',
+    clothType: '14ct Antique White Aida'
+  },
+  {
+    id: '4',
+    title: 'Master Crafter Floss Vault (50 DMC Skeins)',
+    category: 'Threads',
+    price: '$44.00',
+    numericPrice: 44.00,
+    difficulty: 'All Levels',
+    imageUrl: familyFrameImg,
+    status: 'Popular',
+    rating: 4.9,
+    reviewsCount: 215,
+    description: 'Essential assortment of the 50 most frequently used DMC Six-Strand Embroidery Cotton colors across neutrals, skin tones, botanicals, and vibrant accent shades.',
+    includes: [
+      '50× Full 8m (8.7yd) Genuine DMC Floss Skeins',
+      'DMC Color Printed Reference Swatch Card',
+      '50× Durable Plastic Floss Bobbins with Ring Holder',
+      'DMC Thread Number Sticker Sheet'
+    ],
+    dimensions: '50 Skeins (8m each)',
+    threadBrand: 'DMC Six-Strand Mouline 117',
+    clothType: 'N/A'
+  },
+  {
+    id: '5',
+    title: 'Zweigart Premium Aida Cloth Bundle (3-Pack)',
+    category: 'Fabrics',
+    price: '$21.99',
+    numericPrice: 21.99,
+    difficulty: 'All Levels',
+    imageUrl: stitchedHeroImg,
+    status: 'In Stock',
+    rating: 4.9,
+    reviewsCount: 88,
+    description: 'Triple pack of world-renowned German Zweigart 100% cotton Aida fabric with crisp, square weave and anti-fray surged edges.',
+    includes: [
+      '1× 14-Count Pure White Aida (15" × 18")',
+      '1× 14-Count Vintage Oatmeal Aida (15" × 18")',
+      '1× 16-Count Natural Cream Aida (15" × 18")',
+      'Edge-bound zig-zag overlock finish'
+    ],
+    dimensions: 'Three 15" × 18" Pre-Cut Pieces',
+    threadBrand: 'N/A',
+    clothType: '100% Cotton German Zweigart'
+  },
+  {
+    id: '6',
+    title: 'Vintage Gold Stork Scissor & Needle Notions Set',
+    category: 'Notions',
+    price: '$18.50',
+    numericPrice: 18.50,
+    difficulty: 'All Levels',
+    imageUrl: familyFrameImg,
+    status: 'Best Seller',
+    rating: 4.9,
+    reviewsCount: 173,
+    description: 'Classic heirloom stainless steel embroidery scissors with razor-sharp micro-tips, paired with Bohin France needles and a magnetic brass needle minder.',
+    includes: [
+      '3.5" Vintage Gold-Plated Stork Embroidery Scissors',
+      'Enamel Floral Magnetic Needle Minder with Backing Magnet',
+      'Pack of 6× Bohin Size 24/26 Tapestry Needles',
+      'Handcrafted Velvet Notions Travel Pouch'
+    ],
+    dimensions: '3.5" Scissors / 1.2" Enamel Minder',
+    threadBrand: 'Bohin France',
+    clothType: 'N/A'
   }
 ];

@@ -3,6 +3,7 @@ import { Sparkles, BookOpen, ShoppingBag, ShoppingCart, Tag, User, LogIn, UserPl
 import { AuthModal } from './AuthModal';
 import { CartDrawer } from './CartDrawer';
 import { useAuth } from '../context/AuthContext';
+import { useCart } from '../context/CartContext';
 
 interface UserProfile {
   name: string;
@@ -30,9 +31,9 @@ export const Header: React.FC<HeaderProps> = ({
   const { user: authUser, signOut } = useAuth();
   const user = externalUser !== undefined ? externalUser : authUser;
 
+  const { cartCount, isCartOpen, setIsCartOpen } = useCart();
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authDefaultTab, setAuthDefaultTab] = useState<'login' | 'signup'>('login');
-  const [isCartDrawerOpen, setIsCartDrawerOpen] = useState(false);
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
 
   const handleLoginSuccess = (userProfile: UserProfile) => {
@@ -100,22 +101,13 @@ export const Header: React.FC<HeaderProps> = ({
               <span>Learning Hub</span>
             </button>
 
-            <div className="relative group whitespace-nowrap">
-              <button
-                onClick={(e) => {
-                  e.preventDefault();
-                  alert('Marketplace store is coming soon! Stay tuned for physical kits, thread bundles, and artisan supplies.');
-                }}
-                className="flex items-center gap-1.5 text-sm font-medium text-[#788576] hover:text-[#556653] cursor-not-allowed transition-colors whitespace-nowrap"
-                title="Marketplace coming soon"
-              >
-                <ShoppingBag className="w-4 h-4 text-[#A5B3A2]" />
-                <span>Marketplace</span>
-                <span className="ml-0.5 px-2 py-0.5 text-[10px] font-bold bg-[#E8EFE5] text-[#556653] rounded-full border border-[#D0DCD0] whitespace-nowrap">
-                  Coming Soon
-                </span>
-              </button>
-            </div>
+            <button
+              onClick={() => onNavigateToSection('shop-page')}
+              className="text-sm font-medium text-[#3A4538] hover:text-[#E06C38] transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+            >
+              <ShoppingBag className="w-4 h-4 text-[#93A28F]" />
+              <span>Marketplace</span>
+            </button>
 
             <button
               onClick={() => onNavigateToSection('about-page')}
@@ -132,22 +124,24 @@ export const Header: React.FC<HeaderProps> = ({
             {/* Shopping Cart Icon Button */}
             <div className="relative group">
               <button
-                onClick={() => setIsCartDrawerOpen(true)}
+                onClick={() => setIsCartOpen(true)}
                 className="relative p-2.5 rounded-full text-[#3A4538] hover:text-[#E06C38] hover:bg-[#E8E1D2]/50 transition-all cursor-pointer flex items-center justify-center border border-[#E8E1D2]/80"
                 aria-label="Shopping Cart"
-                title="Shopping Cart (Shop Kits Launching Soon)"
+                title="View Shopping Cart"
               >
                 <ShoppingCart className="w-5 h-5" />
                 {/* Cart Badge */}
-                <span className="absolute -top-1 -right-1 bg-[#E06C38] text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center shadow-xs">
-                  0
-                </span>
+                {cartCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-[#E06C38] text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center shadow-xs animate-scale-in">
+                    {cartCount > 99 ? '99+' : cartCount}
+                  </span>
+                )}
               </button>
 
               {/* Tooltip on Hover */}
               <div className="absolute right-0 top-full mt-2 w-48 p-2.5 bg-[#1D231E] text-white text-[11px] rounded-xl shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 text-center leading-snug hidden sm:block">
                 Shopping Cart <br />
-                <span className="text-[#93A28F] text-[10px]">Physical Kits Launching Soon!</span>
+                <span className="text-[#93A28F] text-[10px]">{cartCount} items in cart</span>
               </div>
             </div>
 
@@ -275,9 +269,10 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Cart Drawer */}
       <CartDrawer
-        isOpen={isCartDrawerOpen}
-        onClose={() => setIsCartDrawerOpen(false)}
+        isOpen={isCartOpen}
+        onClose={() => setIsCartOpen(false)}
         onOpenConverter={onOpenConverter}
+        onNavigateToShop={() => onNavigateToSection('shop-page')}
       />
     </>
   );

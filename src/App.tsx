@@ -58,7 +58,7 @@ export default function App() {
         }
       } else if (path.startsWith('/blog')) {
         setCurrentPage('blog');
-      } else if (path.startsWith('/shop')) {
+      } else if (path.startsWith('/shop') || path.startsWith('/marketplace')) {
         setCurrentPage('shop');
       } else if (path.startsWith('/about') || path.startsWith('/contact')) {
         setCurrentPage('about-contact');
@@ -178,8 +178,8 @@ export default function App() {
       return;
     }
 
-    if (sectionId === 'shop-page' || sectionId === 'shop-kits-section' || sectionId === 'shop-section') {
-      navigateToPage('shop', '/shop');
+    if (sectionId === 'shop-page' || sectionId === 'shop-kits-section' || sectionId === 'shop-section' || sectionId === 'marketplace' || sectionId === 'marketplace-page') {
+      navigateToPage('shop', '/marketplace');
       return;
     }
 
@@ -224,6 +224,7 @@ export default function App() {
             <ThreeEntryPoints
               onOpenConverter={() => setIsConverterOpen(true)}
               onNavigateToBlog={() => handleNavigateToSection('blog-page')}
+              onNavigateToShop={() => handleNavigateToSection('marketplace-page')}
             />
 
             {/* Pricing & Subscription Section */}

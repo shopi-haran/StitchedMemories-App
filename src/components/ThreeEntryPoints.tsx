@@ -4,9 +4,14 @@ import { Sparkles, BookOpen, ShoppingBag, ArrowRight, CheckCircle2 } from 'lucid
 interface ThreeEntryPointsProps {
   onOpenConverter: () => void;
   onNavigateToBlog: () => void;
+  onNavigateToShop: () => void;
 }
 
-export const ThreeEntryPoints: React.FC<ThreeEntryPointsProps> = ({ onOpenConverter, onNavigateToBlog }) => {
+export const ThreeEntryPoints: React.FC<ThreeEntryPointsProps> = ({ 
+  onOpenConverter, 
+  onNavigateToBlog,
+  onNavigateToShop
+}) => {
   return (
     <section id="entry-points" className="py-20 bg-[#F5EFE4] relative border-t border-[#E8E1D2]">
       <div className="max-w-7xl mx-auto px-6 lg:px-12">
@@ -112,45 +117,50 @@ export const ThreeEntryPoints: React.FC<ThreeEntryPointsProps> = ({ onOpenConver
             </button>
           </div>
 
-          {/* Entry Point 3: Marketplace (White Blurred Glass Panel - Faded Out for Coming Soon) */}
-          <div className="bg-white/40 backdrop-blur-md border border-white/60 rounded-3xl p-8 shadow-sm relative overflow-hidden flex flex-col justify-between opacity-60 hover:opacity-75 transition-opacity">
-            <div className="absolute top-4 right-4 px-3 py-1 bg-[#E8EFE5] text-[#425440] text-[11px] font-bold rounded-full border border-[#C5D3C2] shadow-xs">
-              Coming Soon
+          {/* Entry Point 3: Marketplace */}
+          <div className="bg-white/70 backdrop-blur-md border border-white/80 rounded-3xl p-8 shadow-lg hover:shadow-2xl transition-all duration-300 flex flex-col justify-between group relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-[#3D5239]/10 rounded-bl-full pointer-events-none" />
+            <div className="absolute top-4 right-4 px-3 py-1 bg-[#E8EFE5] text-[#3D5239] text-[11px] font-bold rounded-full border border-[#C5D3C2] shadow-xs">
+              Kits & Notions
             </div>
 
             <div>
-              <div className="w-14 h-14 rounded-2xl bg-[#D5DDD2] text-[#556353] flex items-center justify-center mb-6">
+              <div className="w-14 h-14 rounded-2xl bg-[#3D5239] text-white flex items-center justify-center shadow-lg shadow-[#3D5239]/20 mb-6 group-hover:scale-110 transition-transform">
                 <ShoppingBag className="w-7 h-7" />
               </div>
 
-              <span className="text-xs font-bold uppercase tracking-wider text-[#70806E]">Marketplace</span>
-              <h3 className="text-2xl font-bold text-[#3B453A] mt-1 mb-3">
-                Marketplace
+              <span className="text-xs font-bold uppercase tracking-wider text-[#3D5239]">Marketplace</span>
+              <h3 className="text-2xl font-bold text-[#1D231E] mt-1 mb-3">
+                Craft Shop & Kits
               </h3>
 
-              <p className="text-sm text-[#6C786A] leading-relaxed mb-6">
-                Curated physical kits as well as individual supplies — including loose thread skeins, premium Aida cloths, tapestry needles, wooden hoops, and printed custom photo charts delivered to your door.
+              <p className="text-sm text-[#5A6659] leading-relaxed mb-6">
+                Curated physical kits as well as individual supplies — including loose DMC thread skeins, premium Zweigart Aida cloths, tapestry needles, wooden hoops, and printed custom photo charts.
               </p>
 
-              <ul className="space-y-2.5 text-xs text-[#6C786A] mb-8">
+              <ul className="space-y-2.5 text-xs text-[#3A4538] mb-8">
                 <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-[#A5B3A2]" />
-                  <span>Individual thread skeins & Aida fabrics</span>
+                  <CheckCircle2 className="w-4 h-4 text-[#93A28F]" />
+                  <span>Pre-sorted DMC thread skeins & Aida fabrics</span>
                 </li>
                 <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-[#A5B3A2]" />
-                  <span>Needles, wooden hoops & accessories</span>
+                  <CheckCircle2 className="w-4 h-4 text-[#93A28F]" />
+                  <span>Bohin needles, beechwood hoops & notions</span>
                 </li>
                 <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-[#A5B3A2]" />
+                  <CheckCircle2 className="w-4 h-4 text-[#93A28F]" />
                   <span>Curated kits & custom photo charts</span>
                 </li>
               </ul>
             </div>
 
-            <div className="w-full py-3.5 px-6 rounded-full bg-[#E5DDD0]/70 text-[#6C786A] font-semibold text-sm flex items-center justify-center gap-2 cursor-not-allowed border border-[#D5CBBA]">
-              <span>Launching Soon</span>
-            </div>
+            <button
+              onClick={onNavigateToShop}
+              className="w-full py-3.5 px-6 rounded-full bg-[#1D231E] hover:bg-[#323D34] text-white font-medium text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer"
+            >
+              <span>Explore Marketplace</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
           </div>
 
         </div>

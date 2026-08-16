@@ -92,8 +92,8 @@ export const Footer: React.FC<FooterProps> = ({ onOpenConverter, onNavigateToSec
                 </button>
               </li>
               <li>
-                <button onClick={() => alert('Marketplace store is coming soon! Physical kits, thread packs, and artisan supplies will be available when our store goes live.')} className="hover:text-white transition-colors cursor-pointer text-left opacity-70">
-                  Marketplace (Coming Soon)
+                <button onClick={() => onNavigateToSection('shop-page')} className="hover:text-white transition-colors cursor-pointer text-left">
+                  Marketplace & Craft Kits
                 </button>
               </li>
               <li>

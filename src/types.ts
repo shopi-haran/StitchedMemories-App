@@ -43,12 +43,19 @@ export interface GalleryItem {
 export interface ShopKit {
   id: string;
   title: string;
-  category: string;
+  category: 'Full Kit' | 'Curated Design' | 'Threads' | 'Fabrics' | 'Notions' | string;
   price: string;
-  difficulty: 'Beginner' | 'Intermediate' | 'Advanced';
+  numericPrice: number;
+  difficulty: 'Beginner' | 'Intermediate' | 'Advanced' | 'All Levels';
   imageUrl: string;
-  status: 'Coming Soon' | 'Pre-Order';
+  status: 'In Stock' | 'Popular' | 'Best Seller' | 'Limited Stock';
+  rating?: number;
+  reviewsCount?: number;
+  description?: string;
   includes: string[];
+  dimensions?: string;
+  threadBrand?: string;
+  clothType?: string;
 }
 
 export interface DMCColor {
