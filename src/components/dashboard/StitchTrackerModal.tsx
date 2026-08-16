@@ -45,8 +45,16 @@ export const StitchTrackerModal: React.FC<StitchTrackerModalProps> = ({
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const patternWrapperRef = useRef<HTMLDivElement | null>(null);
   const [containerSize, setContainerSize] = useState<{ width: number; height: number }>({ width: 600, height: 420 });
   const prevZoomRef = useRef<number>(1);
+
+  // Drag Panning State & Refs
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+  const isDraggingRef = useRef<boolean>(false);
+  const dragStartPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const dragStartScrollRef = useRef<{ left: number; top: number }>({ left: 0, top: 0 });
+  const totalDragDistanceRef = useRef<number>(0);
 
   // Measure canvas viewport container dimensions dynamically
   useEffect(() => {
@@ -192,6 +200,7 @@ export const StitchTrackerModal: React.FC<StitchTrackerModalProps> = ({
   // Compute viewport bounds and overscan for virtualized canvas rendering
   const overscan = 64;
   const isFitMode = zoomMultiplier === 1 && displayWidth <= containerSize.width && displayHeight <= containerSize.height;
+  const isZoomedIn = !isFitMode;
 
   let canvasX = 0;
   let canvasY = 0;
@@ -259,16 +268,15 @@ export const StitchTrackerModal: React.FC<StitchTrackerModalProps> = ({
     drawCanvas();
   }, [drawCanvas]);
 
-  // Pattern Click Handler: Toggle stitch completed status directly from pattern bounding box
-  const handlePatternClick = (e: React.MouseEvent<HTMLDivElement>) => {
+  // Toggle stitch completed status given client coordinate on pattern
+  const toggleStitchAtPoint = useCallback((clientX: number, clientY: number, patternRect: DOMRect) => {
     if (viewMode !== 'tracker' || !pattern) return;
 
-    const rect = e.currentTarget.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
-    const clickY = e.clientY - rect.top;
+    const clickX = clientX - patternRect.left;
+    const clickY = clientY - patternRect.top;
 
-    const cellW = rect.width / pattern.widthStitches;
-    const cellH = rect.height / pattern.heightStitches;
+    const cellW = patternRect.width / pattern.widthStitches;
+    const cellH = patternRect.height / pattern.heightStitches;
 
     const gridX = Math.floor(clickX / cellW);
     const gridY = Math.floor(clickY / cellH);
@@ -285,7 +293,121 @@ export const StitchTrackerModal: React.FC<StitchTrackerModalProps> = ({
       setCompletedStitches(newSet);
       saveProgress(newSet);
     }
+  }, [completedStitches, pattern, viewMode, saveProgress]);
+
+  // Drag Panning Handlers (Enabled when zoomed in past fit-to-screen)
+  const startDrag = (clientX: number, clientY: number) => {
+    if (!isZoomedIn) return;
+    isDraggingRef.current = true;
+    setIsDragging(true);
+    dragStartPosRef.current = { x: clientX, y: clientY };
+    totalDragDistanceRef.current = 0;
+    if (containerRef.current) {
+      dragStartScrollRef.current = {
+        left: containerRef.current.scrollLeft,
+        top: containerRef.current.scrollTop
+      };
+    }
   };
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0) return; // Primary/Left mouse button only
+    if (isZoomedIn) {
+      startDrag(e.clientX, e.clientY);
+    }
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 1 && isZoomedIn) {
+      const touch = e.touches[0];
+      startDrag(touch.clientX, touch.clientY);
+    }
+  };
+
+  // Window-level mouse & touch listeners for fluid pan movement beyond container edges
+  useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isDraggingRef.current || !containerRef.current) return;
+      const deltaX = e.clientX - dragStartPosRef.current.x;
+      const deltaY = e.clientY - dragStartPosRef.current.y;
+      totalDragDistanceRef.current = Math.hypot(deltaX, deltaY);
+
+      // Pan scroll view (natural drag direction)
+      const targetLeft = dragStartScrollRef.current.left - deltaX;
+      const targetTop = dragStartScrollRef.current.top - deltaY;
+
+      // Strictly clamp so the user cannot drag past pattern edges into empty space
+      const maxScrollLeft = Math.max(0, containerRef.current.scrollWidth - containerRef.current.clientWidth);
+      const maxScrollTop = Math.max(0, containerRef.current.scrollHeight - containerRef.current.clientHeight);
+
+      containerRef.current.scrollLeft = Math.max(0, Math.min(maxScrollLeft, targetLeft));
+      containerRef.current.scrollTop = Math.max(0, Math.min(maxScrollTop, targetTop));
+    };
+
+    const onMouseUp = (e: MouseEvent) => {
+      if (!isDraggingRef.current) return;
+      const distance = totalDragDistanceRef.current;
+      isDraggingRef.current = false;
+      setIsDragging(false);
+
+      // If drag distance was very small (under ~5px tap/click), treat as stitch toggle
+      if (distance < 5 && patternWrapperRef.current) {
+        const rect = patternWrapperRef.current.getBoundingClientRect();
+        toggleStitchAtPoint(e.clientX, e.clientY, rect);
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (!isDraggingRef.current || !containerRef.current || e.touches.length !== 1) return;
+      const touch = e.touches[0];
+      const deltaX = touch.clientX - dragStartPosRef.current.x;
+      const deltaY = touch.clientY - dragStartPosRef.current.y;
+      totalDragDistanceRef.current = Math.hypot(deltaX, deltaY);
+
+      const targetLeft = dragStartScrollRef.current.left - deltaX;
+      const targetTop = dragStartScrollRef.current.top - deltaY;
+
+      const maxScrollLeft = Math.max(0, containerRef.current.scrollWidth - containerRef.current.clientWidth);
+      const maxScrollTop = Math.max(0, containerRef.current.scrollHeight - containerRef.current.clientHeight);
+
+      containerRef.current.scrollLeft = Math.max(0, Math.min(maxScrollLeft, targetLeft));
+      containerRef.current.scrollTop = Math.max(0, Math.min(maxScrollTop, targetTop));
+
+      if (e.cancelable && totalDragDistanceRef.current > 3) {
+        e.preventDefault();
+      }
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      if (!isDraggingRef.current) return;
+      const distance = totalDragDistanceRef.current;
+      isDraggingRef.current = false;
+      setIsDragging(false);
+
+      // Small touch distance (< 5px) triggers stitch toggle
+      if (distance < 5 && patternWrapperRef.current) {
+        const touch = e.changedTouches[0];
+        if (touch) {
+          const rect = patternWrapperRef.current.getBoundingClientRect();
+          toggleStitchAtPoint(touch.clientX, touch.clientY, rect);
+        }
+      }
+    };
+
+    window.addEventListener('mousemove', onMouseMove, { passive: false });
+    window.addEventListener('mouseup', onMouseUp);
+    window.addEventListener('touchmove', onTouchMove, { passive: false });
+    window.addEventListener('touchend', onTouchEnd);
+    window.addEventListener('touchcancel', onTouchEnd);
+
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('touchend', onTouchEnd);
+      window.removeEventListener('touchcancel', onTouchEnd);
+    };
+  }, [isZoomedIn, toggleStitchAtPoint]);
 
   // Zoom control steps (up to 1200% / 12x zoom for high-color/high-density charts)
   const handleZoomIn = () => {
@@ -356,6 +478,10 @@ export const StitchTrackerModal: React.FC<StitchTrackerModalProps> = ({
   const completedCount = completedStitches.size;
   const progressPercentage = Math.min(100, Math.round((completedCount / Math.max(1, totalStitches)) * 100));
   const cardTitle = job.title || job.title_name || job.filename || `Pattern #${job.id}`;
+
+  const canvasCursorClass = isZoomedIn
+    ? (isDragging ? 'cursor-grabbing' : 'cursor-grab')
+    : (viewMode === 'tracker' ? 'cursor-pointer' : 'cursor-default');
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/65 backdrop-blur-md animate-fade-in">
@@ -567,9 +693,28 @@ export const StitchTrackerModal: React.FC<StitchTrackerModalProps> = ({
               <div className="flex items-center justify-between mb-2 text-xs">
                 <div className="flex items-center gap-2">
                   <span className="font-bold text-[#1D231E]">
-                    {viewMode === 'tracker' && 'Tap any cell below to toggle stitch completion (✓)'}
-                    {viewMode === 'color' && 'Full DMC Color Cross-Stitch View'}
-                    {viewMode === 'symbol' && 'Black & White Printable Symbol Chart'}
+                    {viewMode === 'tracker' && (
+                      <>
+                        Tap stitch to mark (✓)
+                        {isZoomedIn && (
+                          <span className="ml-1 font-normal text-[#5A6659] hidden sm:inline">
+                            • Click & drag or scroll to pan
+                          </span>
+                        )}
+                      </>
+                    )}
+                    {viewMode === 'color' && (
+                      <>
+                        Full DMC Color Cross-Stitch View
+                        {isZoomedIn && <span className="ml-1 font-normal text-[#5A6659] hidden sm:inline">• Click & drag to pan</span>}
+                      </>
+                    )}
+                    {viewMode === 'symbol' && (
+                      <>
+                        Black & White Printable Symbol Chart
+                        {isZoomedIn && <span className="ml-1 font-normal text-[#5A6659] hidden sm:inline">• Click & drag to pan</span>}
+                      </>
+                    )}
                   </span>
                   {filterDmcCode && (
                     <span className="bg-[#E06C38]/10 text-[#E06C38] px-2 py-0.5 rounded-md text-[10px] font-bold border border-[#E06C38]/20 flex items-center gap-1">
@@ -592,7 +737,9 @@ export const StitchTrackerModal: React.FC<StitchTrackerModalProps> = ({
               <div 
                 ref={containerRef}
                 onScroll={handleScroll}
-                className="relative min-h-[380px] max-h-[520px] h-[52vh] overflow-auto bg-[#FAF6EE] border border-[#E0D8C8] rounded-xl flex p-3 select-none"
+                onMouseDown={handleMouseDown}
+                onTouchStart={handleTouchStart}
+                className={`relative min-h-[380px] max-h-[520px] h-[52vh] overflow-auto bg-[#FAF6EE] border border-[#E0D8C8] rounded-xl flex p-3 select-none ${canvasCursorClass}`}
               >
                 {loadingPattern && (
                   <div className="absolute inset-0 z-20 bg-[#FAF6EE]/90 backdrop-blur-xs flex flex-col items-center justify-center p-8 text-center text-[#5A6659]">
@@ -603,13 +750,19 @@ export const StitchTrackerModal: React.FC<StitchTrackerModalProps> = ({
 
                 {pattern ? (
                   <div 
-                    className="relative shrink-0"
+                    ref={patternWrapperRef}
+                    className={`relative shrink-0 ${canvasCursorClass}`}
                     style={{
                       width: `${displayWidth}px`,
                       height: `${displayHeight}px`,
                       margin: isFitMode ? 'auto' : undefined,
                     }}
-                    onClick={handlePatternClick}
+                    onClick={(e) => {
+                      if (!isZoomedIn && patternWrapperRef.current) {
+                        const rect = patternWrapperRef.current.getBoundingClientRect();
+                        toggleStitchAtPoint(e.clientX, e.clientY, rect);
+                      }
+                    }}
                   >
                     <canvas
                       ref={setCanvasRef}
@@ -620,9 +773,7 @@ export const StitchTrackerModal: React.FC<StitchTrackerModalProps> = ({
                         width: `${canvasW}px`,
                         height: `${canvasH}px`,
                       }}
-                      className={`rounded shadow-md border border-[#1D231E]/20 ${
-                        viewMode === 'tracker' ? 'cursor-pointer' : ''
-                      }`}
+                      className={`rounded shadow-md border border-[#1D231E]/20 ${canvasCursorClass}`}
                     />
                   </div>
                 ) : !loadingPattern ? (
