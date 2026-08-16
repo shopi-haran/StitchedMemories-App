@@ -768,15 +768,15 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
                       className="w-full py-2.5 px-4 bg-[#3D5239] hover:bg-[#2C3B29] text-white rounded-xl font-bold text-xs transition-colors flex items-center justify-center gap-2 shadow-xs cursor-pointer"
                     >
                       <Sliders className="w-4 h-4 text-[#E06C38]" />
-                      <span>Launch Studio Image Editor (Crop, Rotate, Scale & Adjust)</span>
+                      <span>Launch Studio Image Editor (Crop, Scale & Tone Shading)</span>
                     </button>
                   ) : (
                     <button
-                      onClick={() => alert('Studio Image Editor (Crop, Rotate, Flip, Scale & Tone Filters) is exclusive to Studio Plan users. Switch plan mode to Studio above to try it out!')}
+                      onClick={() => alert('Studio Image Editor (Crop, Rotate, Flip, Scale & Tone Shading / Colour Adjustments) is exclusive to Studio Plan users. Switch to Studio Plan to unlock advanced tone calibration!')}
                       className="w-full py-2.5 px-4 bg-[#F0EBE1] text-[#7A8877] rounded-xl font-bold text-xs border border-[#DCD2C0] flex items-center justify-center gap-2 cursor-pointer hover:bg-[#E8E1D2]/80 transition-colors"
                     >
                       <Lock className="w-3.5 h-3.5 text-[#E06C38]" />
-                      <span>Studio Image Editor (Studio Plan Exclusive)</span>
+                      <span>Studio Image Editor & Tone Shading (Studio Plan Exclusive)</span>
                     </button>
                   )}
                 </div>
@@ -895,78 +895,6 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
                   {dithering === 'atkinson' && 'Macintosh Atkinson dithering for high-contrast artistic cross-stitch.'}
                 </span>
               </div>
-
-              {/* Tone Shading & Fine-Tuning Controls (Studio Plan Tier Only) */}
-              {planTier === 'studio' && (
-                <div className="pt-3 border-t border-[#F0EBE1] space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-[#1D231E]">Tone Shading & Color Adjustments (Studio)</span>
-                    {(brightness !== 0 || contrast !== 0 || saturation !== 0) && (
-                      <button
-                        onClick={() => {
-                          setBrightness(0);
-                          setContrast(0);
-                          setSaturation(0);
-                        }}
-                        className="text-[10px] text-[#E06C38] font-bold hover:underline cursor-pointer"
-                      >
-                        Reset Tones
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Brightness Slider */}
-                  <div>
-                    <div className="flex justify-between text-[11px] font-medium text-[#4A5548] mb-1">
-                      <span>Brightness Adjustment</span>
-                      <span className="font-mono">{brightness > 0 ? `+${brightness}` : brightness}</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="-40"
-                      max="40"
-                      step="2"
-                      value={brightness}
-                      onChange={(e) => setBrightness(Number(e.target.value))}
-                      className="w-full accent-[#E06C38] cursor-pointer"
-                    />
-                  </div>
-
-                  {/* Contrast Slider */}
-                  <div>
-                    <div className="flex justify-between text-[11px] font-medium text-[#4A5548] mb-1">
-                      <span>Contrast Adjustment</span>
-                      <span className="font-mono">{contrast > 0 ? `+${contrast}` : contrast}</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="-40"
-                      max="40"
-                      step="2"
-                      value={contrast}
-                      onChange={(e) => setContrast(Number(e.target.value))}
-                      className="w-full accent-[#E06C38] cursor-pointer"
-                    />
-                  </div>
-
-                  {/* Saturation Slider */}
-                  <div>
-                    <div className="flex justify-between text-[11px] font-medium text-[#4A5548] mb-1">
-                      <span>Color Saturation Adjustment</span>
-                      <span className="font-mono">{saturation > 0 ? `+${saturation}` : saturation}</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="-40"
-                      max="40"
-                      step="2"
-                      value={saturation}
-                      onChange={(e) => setSaturation(Number(e.target.value))}
-                      className="w-full accent-[#E06C38] cursor-pointer"
-                    />
-                  </div>
-                </div>
-              )}
 
               {/* Thread Brand Selector (Pro & Studio Feature) */}
               <div className="pt-2 border-t border-[#F0EBE1] flex items-center justify-between text-xs">

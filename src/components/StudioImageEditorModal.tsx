@@ -280,8 +280,8 @@ export const StudioImageEditorModal: React.FC<StudioImageEditorModalProps> = ({
                   activeTab === 'adjust' ? 'bg-[#3D5239] text-white shadow-xs' : 'text-[#5C685A] hover:text-[#1D231E]'
                 }`}
               >
-                <Sun className="w-4 h-4" />
-                <span>Filters</span>
+                <Sliders className="w-4 h-4" />
+                <span>Tone Shading</span>
               </button>
             </div>
 
@@ -523,93 +523,137 @@ export const StudioImageEditorModal: React.FC<StudioImageEditorModalProps> = ({
               </div>
             )}
 
-            {/* TAB 4: TONE & FILTERS */}
+            {/* TAB 4: TONE SHADING & COLOUR ADJUSTMENT */}
             {activeTab === 'adjust' && (
               <div className="bg-white p-4.5 rounded-2xl border border-[#E8E1D2] shadow-xs space-y-4">
-                <h4 className="text-xs font-bold text-[#1D231E]">Filters & Tone Shading</h4>
-
-                {/* Filter Mode Presets */}
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => setFilterMode('none')}
-                    className={`py-1.5 px-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                      filterMode === 'none' ? 'bg-[#3D5239] text-white border-[#3D5239]' : 'bg-[#FAF6EE] text-[#1D231E] border-[#E8E1D2]'
-                    }`}
-                  >
-                    Normal Color
-                  </button>
-                  <button
-                    onClick={() => setFilterMode('grayscale')}
-                    className={`py-1.5 px-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                      filterMode === 'grayscale' ? 'bg-[#3D5239] text-white border-[#3D5239]' : 'bg-[#FAF6EE] text-[#1D231E] border-[#E8E1D2]'
-                    }`}
-                  >
-                    B&W Grayscale
-                  </button>
-                  <button
-                    onClick={() => setFilterMode('sepia')}
-                    className={`py-1.5 px-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                      filterMode === 'sepia' ? 'bg-[#3D5239] text-white border-[#3D5239]' : 'bg-[#FAF6EE] text-[#1D231E] border-[#E8E1D2]'
-                    }`}
-                  >
-                    Vintage Sepia
-                  </button>
-                  <button
-                    onClick={() => setFilterMode('invert')}
-                    className={`py-1.5 px-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                      filterMode === 'invert' ? 'bg-[#3D5239] text-white border-[#3D5239]' : 'bg-[#FAF6EE] text-[#1D231E] border-[#E8E1D2]'
-                    }`}
-                  >
-                    Invert Colors
-                  </button>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-xs font-bold text-[#1D231E]">Tone Shading & Colour Adjustment</h4>
+                    <p className="text-[10px] text-[#5C685A]">Adjust brightness, contrast & vibrancy for needlework</p>
+                  </div>
+                  {(brightness !== 0 || contrast !== 0 || saturation !== 0 || filterMode !== 'none') && (
+                    <button
+                      onClick={() => {
+                        setBrightness(0);
+                        setContrast(0);
+                        setSaturation(0);
+                        setFilterMode('none');
+                      }}
+                      className="text-[10px] text-[#E06C38] font-bold hover:underline cursor-pointer flex items-center gap-1"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      <span>Reset Tones</span>
+                    </button>
+                  )}
                 </div>
 
-                {/* Sliders */}
+                {/* Filter Mode Presets */}
+                <div>
+                  <label className="text-[11px] font-semibold text-[#1D231E] block mb-1.5">Quick Tone Presets</label>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button
+                      onClick={() => setFilterMode('none')}
+                      className={`py-1.5 px-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                        filterMode === 'none' ? 'bg-[#3D5239] text-white border-[#3D5239]' : 'bg-[#FAF6EE] text-[#1D231E] border-[#E8E1D2] hover:bg-[#E8EFE5]'
+                      }`}
+                    >
+                      Normal Color
+                    </button>
+                    <button
+                      onClick={() => setFilterMode('grayscale')}
+                      className={`py-1.5 px-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                        filterMode === 'grayscale' ? 'bg-[#3D5239] text-white border-[#3D5239]' : 'bg-[#FAF6EE] text-[#1D231E] border-[#E8E1D2] hover:bg-[#E8EFE5]'
+                      }`}
+                    >
+                      B&W Grayscale
+                    </button>
+                    <button
+                      onClick={() => setFilterMode('sepia')}
+                      className={`py-1.5 px-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                        filterMode === 'sepia' ? 'bg-[#3D5239] text-white border-[#3D5239]' : 'bg-[#FAF6EE] text-[#1D231E] border-[#E8E1D2] hover:bg-[#E8EFE5]'
+                      }`}
+                    >
+                      Vintage Sepia
+                    </button>
+                    <button
+                      onClick={() => setFilterMode('invert')}
+                      className={`py-1.5 px-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                        filterMode === 'invert' ? 'bg-[#3D5239] text-white border-[#3D5239]' : 'bg-[#FAF6EE] text-[#1D231E] border-[#E8E1D2] hover:bg-[#E8EFE5]'
+                      }`}
+                    >
+                      Invert Colors
+                    </button>
+                  </div>
+                </div>
+
+                {/* Tone Shading Sliders */}
                 <div className="space-y-3 pt-2 border-t border-[#F0EBE1]">
                   <div>
                     <div className="flex justify-between text-xs font-medium text-[#4A5548] mb-1">
-                      <span>Brightness</span>
-                      <span className="font-mono">{brightness > 0 ? `+${brightness}` : brightness}</span>
+                      <span>Brightness Adjustment</span>
+                      <span className="font-mono text-[#E06C38] font-bold">{brightness > 0 ? `+${brightness}` : brightness}</span>
                     </div>
                     <input
                       type="range"
                       min="-100"
                       max="100"
+                      step="2"
                       value={brightness}
                       onChange={(e) => setBrightness(Number(e.target.value))}
                       className="w-full accent-[#E06C38] cursor-pointer"
                     />
+                    <div className="flex justify-between text-[9px] text-[#7A8877] mt-0.5">
+                      <span>Darker (-100)</span>
+                      <span>Default (0)</span>
+                      <span>Brighter (+100)</span>
+                    </div>
                   </div>
 
                   <div>
                     <div className="flex justify-between text-xs font-medium text-[#4A5548] mb-1">
-                      <span>Contrast</span>
-                      <span className="font-mono">{contrast > 0 ? `+${contrast}` : contrast}</span>
+                      <span>Contrast Adjustment</span>
+                      <span className="font-mono text-[#E06C38] font-bold">{contrast > 0 ? `+${contrast}` : contrast}</span>
                     </div>
                     <input
                       type="range"
                       min="-100"
                       max="100"
+                      step="2"
                       value={contrast}
                       onChange={(e) => setContrast(Number(e.target.value))}
                       className="w-full accent-[#E06C38] cursor-pointer"
                     />
+                    <div className="flex justify-between text-[9px] text-[#7A8877] mt-0.5">
+                      <span>Softer (-100)</span>
+                      <span>Default (0)</span>
+                      <span>Higher Punch (+100)</span>
+                    </div>
                   </div>
 
                   <div>
                     <div className="flex justify-between text-xs font-medium text-[#4A5548] mb-1">
-                      <span>Saturation</span>
-                      <span className="font-mono">{saturation > 0 ? `+${saturation}` : saturation}</span>
+                      <span>Colour Saturation Adjustment</span>
+                      <span className="font-mono text-[#E06C38] font-bold">{saturation > 0 ? `+${saturation}` : saturation}</span>
                     </div>
                     <input
                       type="range"
                       min="-100"
                       max="100"
+                      step="2"
                       value={saturation}
                       onChange={(e) => setSaturation(Number(e.target.value))}
                       className="w-full accent-[#E06C38] cursor-pointer"
                     />
+                    <div className="flex justify-between text-[9px] text-[#7A8877] mt-0.5">
+                      <span>Muted (-100)</span>
+                      <span>Natural (0)</span>
+                      <span>Vibrant (+100)</span>
+                    </div>
                   </div>
+                </div>
+
+                <div className="p-3 bg-[#FAF6EE] rounded-xl border border-[#E8E1D2] text-[11px] text-[#5C685A] leading-relaxed">
+                  💡 <strong>Tip:</strong> Tone shading adjusts the source image pixels directly before DMC color matching, giving optimal thread hue distribution in the resulting chart.
                 </div>
               </div>
             )}

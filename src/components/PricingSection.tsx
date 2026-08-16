@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Check, Sparkles, Zap, Shield, Image, Percent, RefreshCw, Calculator, ArrowRight } from 'lucide-react';
+import { Check, Sparkles, Zap, Shield, Image, Percent, RefreshCw, Calculator, ArrowRight, Sliders } from 'lucide-react';
 
 interface PricingSectionProps {
   onOpenConverter?: () => void;
@@ -235,6 +235,10 @@ export const PricingSection: React.FC<PricingSectionProps> = ({ onSelectPlan }) 
                 <li className="flex items-start gap-2.5">
                   <Check className="w-4 h-4 text-[#E06C38] shrink-0 mt-0.5" />
                   <span><strong className="text-[#E06C38]">Unlimited Thread Colors</strong> per pattern</span>
+                </li>
+                <li className="flex items-start gap-2.5">
+                  <Sliders className="w-4 h-4 text-[#E06C38] shrink-0 mt-0.5" />
+                  <span><strong className="text-[#E06C38]">Studio Image Editor & Tone Shading</strong> (Crop, rotate, scale, brightness, contrast & colour adjustments)</span>
                 </li>
                 <li className="flex items-start gap-2.5">
                   <Image className="w-4 h-4 text-[#E06C38] shrink-0 mt-0.5" />
