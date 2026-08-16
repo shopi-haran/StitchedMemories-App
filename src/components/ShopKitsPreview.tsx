@@ -18,19 +18,19 @@ export const ShopKitsPreview: React.FC<ShopKitsPreviewProps> = ({ onNavigateToSh
               <span>Custom Stitch Studio</span>
             </div>
             <h2 className="text-3xl sm:text-4xl font-bold text-[#1D231E]">
-              Custom Order Marketplace & Artisan Kits
+              Custom Order Marketplace
             </h2>
           </div>
           <div className="flex flex-col items-start md:items-end gap-2 mt-3 md:mt-0">
             <p className="text-sm text-[#5A6659] max-w-md text-left md:text-right">
-              Request bespoke cross-stitch kits and fully finished heirloom hand-stitched pieces tailored to your exact specifications.
+              Request bespoke cross-stitch kits or commission our master artisans to stitch and frame an heirloom piece for you.
             </p>
             {onNavigateToShopPage && (
               <button
                 onClick={onNavigateToShopPage}
                 className="text-xs font-bold text-[#E06C38] hover:underline flex items-center gap-1 cursor-pointer mt-1"
               >
-                <span>View Custom Order System</span>
+                <span>Open Marketplace</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
             )}
@@ -45,10 +45,10 @@ export const ShopKitsPreview: React.FC<ShopKitsPreviewProps> = ({ onNavigateToSh
               <span>Quote-Based Ordering</span>
             </div>
             <h3 className="text-2xl sm:text-3xl font-bold text-[#1D231E] mb-3">
-              Tailored Physical Kits & Hand-Stitched Finished Keepsakes
+              Custom Kits & Finished Hand-Stitched Keepsakes
             </h3>
             <p className="text-sm text-[#5A6659] leading-relaxed mb-6">
-              Every project is unique. Submit your image, desired dimensions, fabric preference, and timeline. Our artisan stitchers provide exact material estimates and bespoke quotes.
+              Turn your photo into a tailored stitching kit delivered to your door, or have our team stitch and museum-frame your heirloom piece for you.
             </p>
             {onNavigateToShopPage && (
               <button
@@ -56,30 +56,26 @@ export const ShopKitsPreview: React.FC<ShopKitsPreviewProps> = ({ onNavigateToSh
                 className="px-6 py-3 rounded-full bg-[#1D231E] hover:bg-[#323D34] text-white text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md"
               >
                 <ShoppingBag className="w-4 h-4 text-[#93A28F]" />
-                <span>Explore Custom Order Hub</span>
+                <span>Explore Marketplace</span>
               </button>
             )}
           </div>
 
           <div className="w-full md:w-80 bg-[#FAF6EE] rounded-2xl p-6 border border-[#E8E1D2] flex flex-col gap-3 text-xs text-[#4A544A]">
             <div className="font-bold text-sm text-[#1D231E] pb-2 border-b border-[#E8E1D2]">
-              Order Types Supported:
+              Marketplace Offerings:
             </div>
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-[#E06C38]" />
-              <span>Custom Physical Material Kits</span>
+              <span><strong>Custom Kits:</strong> DIY kit delivered with DMC floss</span>
             </div>
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-[#3D5239]" />
-              <span>Finished Hand-Stitched Framed Art</span>
+              <span><strong>Custom Stitched:</strong> We stitch and frame it for you</span>
             </div>
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-[#5A6659]" />
-              <span>DMC Floss & Fabric Bundles</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-[#8A9588]" />
-              <span>Multi-Page Printed Booklets</span>
+              <span><strong>Assisted Requests:</strong> Full studio support</span>
             </div>
           </div>
         </div>

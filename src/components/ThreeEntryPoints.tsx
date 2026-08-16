@@ -121,7 +121,7 @@ export const ThreeEntryPoints: React.FC<ThreeEntryPointsProps> = ({
           <div className="bg-white/70 backdrop-blur-md border border-white/80 rounded-3xl p-8 shadow-lg hover:shadow-2xl transition-all duration-300 flex flex-col justify-between group relative overflow-hidden">
             <div className="absolute top-0 right-0 w-32 h-32 bg-[#3D5239]/10 rounded-bl-full pointer-events-none" />
             <div className="absolute top-4 right-4 px-3 py-1 bg-[#E8EFE5] text-[#3D5239] text-[11px] font-bold rounded-full border border-[#C5D3C2] shadow-xs">
-              Kits & Notions
+              Custom Orders
             </div>
 
             <div>
@@ -131,25 +131,25 @@ export const ThreeEntryPoints: React.FC<ThreeEntryPointsProps> = ({
 
               <span className="text-xs font-bold uppercase tracking-wider text-[#3D5239]">Marketplace</span>
               <h3 className="text-2xl font-bold text-[#1D231E] mt-1 mb-3">
-                Craft Shop & Kits
+                Custom Orders & Kits
               </h3>
 
               <p className="text-sm text-[#5A6659] leading-relaxed mb-6">
-                Curated physical kits as well as individual supplies — including loose DMC thread skeins, premium Zweigart Aida cloths, tapestry needles, wooden hoops, and printed custom photo charts.
+                Turn your personal photograph into an authentic physical stitching kit delivered to your doorstep, or commission a finished heirloom piece handcrafted by our artisan team.
               </p>
 
               <ul className="space-y-2.5 text-xs text-[#3A4538] mb-8">
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-[#93A28F]" />
-                  <span>Pre-sorted DMC thread skeins & Aida fabrics</span>
+                  <span>Custom DIY kits with DMC floss & Zweigart Aida</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-[#93A28F]" />
-                  <span>Bohin needles, beechwood hoops & notions</span>
+                  <span>Assisted kit requests with full studio support</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-[#93A28F]" />
-                  <span>Curated kits & custom photo charts</span>
+                  <span>Fully finished, framed hand-stitched keepsakes</span>
                 </li>
               </ul>
             </div>

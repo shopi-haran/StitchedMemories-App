@@ -93,7 +93,7 @@ export const Footer: React.FC<FooterProps> = ({ onOpenConverter, onNavigateToSec
               </li>
               <li>
                 <button onClick={() => onNavigateToSection('shop-page')} className="hover:text-white transition-colors cursor-pointer text-left">
-                  Marketplace & Craft Kits
+                  Marketplace
                 </button>
               </li>
               <li>

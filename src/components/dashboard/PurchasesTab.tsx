@@ -271,7 +271,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({ user, onNavigateToSh
           </div>
           <h3 className="text-lg font-bold text-[#1D231E]">No Store Purchases Yet</h3>
           <p className="text-xs text-[#5A6659] max-w-md mx-auto mt-1 mb-5 leading-relaxed">
-            When you purchase cross-stitch starter kits, Aida fabric, or DMC thread bundles, your order receipts will appear here.
+            When you commission custom kits, bespoke hand-stitched keepsakes, or digital materials, your receipts will appear here.
           </p>
           {onNavigateToShop && (
             <button
@@ -279,7 +279,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({ user, onNavigateToSh
               className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#1D231E] text-white text-xs font-bold rounded-full hover:bg-[#323D34] transition-all cursor-pointer shadow-xs"
             >
               <ShoppingBag className="w-3.5 h-3.5 text-[#93A28F]" />
-              <span>Browse Shop Kits</span>
+              <span>Explore Marketplace</span>
             </button>
           )}
         </div>

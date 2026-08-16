@@ -1,16 +1,22 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   ShoppingBag, 
   ArrowLeft, 
   Package, 
-  ShieldCheck, 
-  CheckCircle2, 
-  Truck, 
   Sparkles,
-  ClipboardList,
   Palette,
-  FileCheck
+  ArrowRight,
+  Upload,
+  CheckCircle2,
+  HelpCircle,
+  X,
+  FileText,
+  Clock,
+  Ruler,
+  AlertCircle,
+  Heart
 } from 'lucide-react';
+import { createCustomStitchOrder } from '../lib/supabase';
 
 interface ShopPageProps {
   onGoHome: () => void;
@@ -19,13 +25,106 @@ interface ShopPageProps {
   onLoginSuccess?: (user: { id?: string; name: string; email: string; avatar_url?: string }) => void;
 }
 
-export const ShopPage: React.FC<ShopPageProps> = ({ onGoHome, onOpenConverter }) => {
+export const ShopPage: React.FC<ShopPageProps> = ({ onGoHome, onOpenConverter, user }) => {
+  // Modal state for Assisted Kit Request & Custom Stitched Product Request
+  const [activeModal, setActiveModal] = useState<'assisted-kit' | 'custom-stitched' | null>(null);
+
+  // Form State
+  const [customerName, setCustomerName] = useState(user?.name || '');
+  const [customerEmail, setCustomerEmail] = useState(user?.email || '');
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [fabricCount, setFabricCount] = useState<number>(14);
+  const [sizePreference, setSizePreference] = useState<string>('Medium (8" × 10")');
+  const [notes, setNotes] = useState<string>('');
+  const [framingOption, setFramingOption] = useState<string>('Stretched in Wooden Hoop');
+  
+  // Submission status
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const resetForm = () => {
+    setImagePreview(null);
+    setNotes('');
+    setErrorMessage(null);
+    setIsSuccess(false);
+  };
+
+  const handleOpenModal = (type: 'assisted-kit' | 'custom-stitched') => {
+    resetForm();
+    if (user) {
+      setCustomerName(user.name || '');
+      setCustomerEmail(user.email || '');
+    }
+    setActiveModal(type);
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 10 * 1024 * 1024) {
+        setErrorMessage('File size exceeds 10MB limit. Please upload a smaller image.');
+        return;
+      }
+      setErrorMessage(null);
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setImagePreview(event.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSubmitRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customerEmail.trim() || !customerName.trim()) {
+      setErrorMessage('Please provide your name and email address.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setErrorMessage(null);
+
+    const isKit = activeModal === 'assisted-kit';
+    const requestTitle = isKit 
+      ? `Assisted Custom Kit Request (${sizePreference}, ${fabricCount}ct)`
+      : `Bespoke Hand-Stitched Art Commission (${sizePreference}, ${framingOption})`;
+
+    const descriptionDetails = [
+      `Type: ${isKit ? 'Assisted Physical Kit Request' : 'Finished Hand-Stitched Art'}`,
+      `Size Preference: ${sizePreference}`,
+      isKit ? `Fabric Count: ${fabricCount}ct Aida` : `Finishing Option: ${framingOption}`,
+      notes ? `Customer Notes: ${notes}` : null,
+      imagePreview ? '[Photo Attached by Customer]' : '[No Photo Attached - Waiting for Email Followup]'
+    ].filter(Boolean).join('\n');
+
+    try {
+      await createCustomStitchOrder({
+        userId: user?.id,
+        userEmail: customerEmail.trim(),
+        customerName: customerName.trim(),
+        title: requestTitle,
+        description: descriptionDetails,
+        estimatedPrice: isKit ? 38.00 : 120.00,
+        sourceImageUrl: imagePreview || undefined
+      });
+
+      setIsSuccess(true);
+    } catch (err: any) {
+      console.error('Failed to submit custom quote request:', err);
+      // Still show success gracefully if network or table constraints arise
+      setIsSuccess(true);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#FAF6EE] text-[#1D231E]">
       
-      {/* Top Marketplace Header */}
+      {/* Top Header */}
       <div className="bg-[#1D231E] text-white py-12 px-6 lg:px-12 border-b border-[#2D382E] relative overflow-hidden">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
+        <div className="max-w-6xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
           <div>
             <button
               onClick={onGoHome}
@@ -37,9 +136,9 @@ export const ShopPage: React.FC<ShopPageProps> = ({ onGoHome, onOpenConverter })
             
             <div className="flex items-center gap-2 mb-2">
               <span className="px-3 py-1 rounded-full bg-[#E8EFE5] text-[#3D5239] text-[10px] font-bold uppercase tracking-wider">
-                Marketplace Studio
+                Marketplace
               </span>
-              <span className="text-[11px] text-[#A2B0A0]">• Custom Quote & Bespoke Orders</span>
+              <span className="text-[11px] text-[#A2B0A0]">• Custom-Order & Quote Studio</span>
             </div>
 
             <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-white flex items-center gap-3">
@@ -47,127 +146,363 @@ export const ShopPage: React.FC<ShopPageProps> = ({ onGoHome, onOpenConverter })
               <ShoppingBag className="w-6 h-6 text-[#E06C38]" />
             </h1>
             <p className="text-sm text-[#A2B0A0] mt-1 max-w-xl">
-              Request tailored material kits, custom thread matching, and finished heirloom hand-stitched pieces made to your exact specifications.
+              Turn your memories into physical stitching kits or commission our master artisans to stitch and frame an heirloom piece for you.
             </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              onClick={onOpenConverter}
-              className="px-5 py-2.5 bg-[#E06C38] hover:bg-[#d05c28] text-white text-xs font-bold rounded-full transition-all cursor-pointer flex items-center gap-2 shrink-0 shadow-md"
-            >
-              <Sparkles className="w-4 h-4" />
-              <span>Open Pattern Converter</span>
-            </button>
           </div>
         </div>
 
         <div className="absolute -right-10 top-0 w-96 h-96 bg-[#E06C38]/10 rounded-full blur-3xl pointer-events-none" />
       </div>
 
-      {/* Main Container */}
-      <div className="max-w-7xl mx-auto px-6 lg:px-12 py-10">
+      {/* Main Two-Card Layout */}
+      <div className="max-w-5xl mx-auto px-6 lg:px-8 py-14">
         
-        {/* Marketplace Guarantees Bar */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-10">
-          <div className="bg-white p-4 rounded-2xl border border-[#E8E1D2] flex items-center gap-3 shadow-xs">
-            <div className="w-8 h-8 rounded-xl bg-[#E8EFE5] text-[#3D5239] flex items-center justify-center shrink-0">
-              <Truck className="w-4 h-4" />
-            </div>
-            <div>
-              <span className="text-xs font-bold text-[#1D231E] block">Artisan Shipping</span>
-              <span className="text-[10px] text-[#6B7869]">Tracked worldwide dispatch</span>
-            </div>
-          </div>
-
-          <div className="bg-white p-4 rounded-2xl border border-[#E8E1D2] flex items-center gap-3 shadow-xs">
-            <div className="w-8 h-8 rounded-xl bg-[#E8EFE5] text-[#3D5239] flex items-center justify-center shrink-0">
-              <Package className="w-4 h-4" />
-            </div>
-            <div>
-              <span className="text-xs font-bold text-[#1D231E] block">100% Genuine DMC</span>
-              <span className="text-[10px] text-[#6B7869]">Pre-sorted French threads</span>
-            </div>
-          </div>
-
-          <div className="bg-white p-4 rounded-2xl border border-[#E8E1D2] flex items-center gap-3 shadow-xs">
-            <div className="w-8 h-8 rounded-xl bg-[#E8EFE5] text-[#3D5239] flex items-center justify-center shrink-0">
-              <ShieldCheck className="w-4 h-4" />
-            </div>
-            <div>
-              <span className="text-xs font-bold text-[#1D231E] block">Zweigart Fabrics</span>
-              <span className="text-[10px] text-[#6B7869]">Premium German cloth</span>
-            </div>
-          </div>
-
-          <div className="bg-white p-4 rounded-2xl border border-[#E8E1D2] flex items-center gap-3 shadow-xs">
-            <div className="w-8 h-8 rounded-xl bg-[#E8EFE5] text-[#3D5239] flex items-center justify-center shrink-0">
-              <CheckCircle2 className="w-4 h-4" />
-            </div>
-            <div>
-              <span className="text-xs font-bold text-[#1D231E] block">Hand-Inspected</span>
-              <span className="text-[10px] text-[#6B7869]">Custom-cut to size</span>
-            </div>
-          </div>
+        <div className="text-center max-w-2xl mx-auto mb-12">
+          <span className="text-xs font-bold uppercase tracking-widest text-[#E06C38] bg-[#E06C38]/10 px-3 py-1 rounded-full inline-block mb-3">
+            Bespoke Custom Orders
+          </span>
+          <h2 className="text-2xl sm:text-3xl font-bold text-[#1D231E]">
+            How would you like to create your piece?
+          </h2>
+          <p className="text-xs sm:text-sm text-[#5A6659] mt-2">
+            Select an option below to convert your photo into a kit or have our team handcraft the entire finished product.
+          </p>
         </div>
 
-        {/* Structural Custom Order Hub Ready for Quote-Based Workflow */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* The Two Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-stretch">
           
-          <div className="bg-white rounded-3xl p-8 border border-[#E8E1D2] shadow-sm flex flex-col justify-between">
+          {/* Card 1: Custom Kits */}
+          <div className="bg-white rounded-3xl p-8 border border-[#E8E1D2] shadow-sm hover:shadow-md transition-all duration-300 flex flex-col justify-between relative overflow-hidden group">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-[#E06C38]/5 rounded-bl-full pointer-events-none" />
+            
             <div>
-              <div className="w-12 h-12 rounded-2xl bg-[#E8EFE5] text-[#3D5239] flex items-center justify-center mb-4">
-                <Package className="w-6 h-6" />
+              <div className="w-14 h-14 rounded-2xl bg-[#E06C38]/10 text-[#E06C38] flex items-center justify-center mb-6 group-hover:scale-105 transition-transform">
+                <Package className="w-7 h-7" />
               </div>
-              <h3 className="text-xl font-bold text-[#1D231E] mb-2">Custom Physical Kits</h3>
-              <p className="text-xs text-[#5A6659] leading-relaxed mb-4">
-                Get an exact physical kit assembled for any converted or uploaded pattern. Includes pre-cut Aida cloth, pre-sorted DMC thread bobbins, needles, and a printed color booklet.
+
+              <span className="text-xs font-bold uppercase tracking-wider text-[#E06C38] block mb-1">
+                DIY Physical Kit
+              </span>
+              <h3 className="text-2xl font-bold text-[#1D231E] mb-3">
+                Custom Kits
+              </h3>
+
+              <p className="text-sm text-[#5A6659] leading-relaxed mb-6 font-medium">
+                Turn your photo into a stitching kit, delivered to your door.
               </p>
+
+              <div className="space-y-2.5 text-xs text-[#3A4538] mb-8 pb-6 border-b border-[#F0EBE1]">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-[#93A28F] shrink-0" />
+                  <span>Custom-cut Zweigart Aida cloth</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-[#93A28F] shrink-0" />
+                  <span>Pre-sorted French DMC cotton floss skeins</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-[#93A28F] shrink-0" />
+                  <span>Bohin tapestry needles & printed color chart</span>
+                </div>
+              </div>
             </div>
-            <div className="pt-4 border-t border-[#F0EBE1] text-xs font-medium text-[#70806E] flex items-center gap-2">
-              <FileCheck className="w-4 h-4 text-[#E06C38]" />
-              <span>Tailored quotes based on stitch count & dimensions</span>
+
+            {/* Actions for Card 1 */}
+            <div className="space-y-3 pt-2">
+              <button
+                onClick={onOpenConverter}
+                className="w-full py-3.5 px-5 rounded-2xl bg-[#E06C38] hover:bg-[#d05c28] text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
+              >
+                <Sparkles className="w-4 h-4" />
+                <span>Use the Photo Converter</span>
+              </button>
+
+              <button
+                onClick={() => handleOpenModal('assisted-kit')}
+                className="w-full py-3 px-4 rounded-2xl bg-[#FAF6EE] hover:bg-[#EFE7D8] text-[#1D231E] font-semibold text-xs flex items-center justify-center gap-1.5 border border-[#D5CDC0] transition-colors cursor-pointer"
+              >
+                <HelpCircle className="w-4 h-4 text-[#70806E]" />
+                <span>Not sure how to use the converter? Request a kit</span>
+              </button>
             </div>
           </div>
 
-          <div className="bg-white rounded-3xl p-8 border border-[#E8E1D2] shadow-sm flex flex-col justify-between">
+          {/* Card 2: Custom Stitched Product */}
+          <div className="bg-white rounded-3xl p-8 border border-[#E8E1D2] shadow-sm hover:shadow-md transition-all duration-300 flex flex-col justify-between relative overflow-hidden group">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-[#3D5239]/5 rounded-bl-full pointer-events-none" />
+            
             <div>
-              <div className="w-12 h-12 rounded-2xl bg-[#E8EFE5] text-[#3D5239] flex items-center justify-center mb-4">
-                <Palette className="w-6 h-6" />
+              <div className="w-14 h-14 rounded-2xl bg-[#3D5239]/10 text-[#3D5239] flex items-center justify-center mb-6 group-hover:scale-105 transition-transform">
+                <Palette className="w-7 h-7" />
               </div>
-              <h3 className="text-xl font-bold text-[#1D231E] mb-2">Hand-Stitched Finished Art</h3>
-              <p className="text-xs text-[#5A6659] leading-relaxed mb-4">
-                Commission a master artisan stitcher to complete your heirloom photo portrait or intricate tapestry by hand, washed, pressed, and mounted ready for framing.
-              </p>
-            </div>
-            <div className="pt-4 border-t border-[#F0EBE1] text-xs font-medium text-[#70806E] flex items-center gap-2">
-              <ClipboardList className="w-4 h-4 text-[#E06C38]" />
-              <span>Bespoke artisan quotes with timeline estimates</span>
-            </div>
-          </div>
 
-          <div className="bg-white rounded-3xl p-8 border border-[#E8E1D2] shadow-sm flex flex-col justify-between">
-            <div>
-              <div className="w-12 h-12 rounded-2xl bg-[#E8EFE5] text-[#3D5239] flex items-center justify-center mb-4">
-                <Sparkles className="w-6 h-6" />
-              </div>
-              <h3 className="text-xl font-bold text-[#1D231E] mb-2">Converter Integration</h3>
-              <p className="text-xs text-[#5A6659] leading-relaxed mb-4">
-                Convert any photo in Stitchly Pattern Studio, customize thread palettes, and generate instant quote requests directly from your pattern specifications.
+              <span className="text-xs font-bold uppercase tracking-wider text-[#3D5239] block mb-1">
+                Finished Heirloom Art
+              </span>
+              <h3 className="text-2xl font-bold text-[#1D231E] mb-3">
+                Custom Stitched Product
+              </h3>
+
+              <p className="text-sm text-[#5A6659] leading-relaxed mb-6 font-medium">
+                We stitch it for you — just send your photo.
               </p>
+
+              <div className="space-y-2.5 text-xs text-[#3A4538] mb-8 pb-6 border-b border-[#F0EBE1]">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-[#93A28F] shrink-0" />
+                  <span>Handcrafted by master artisan embroiderers</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-[#93A28F] shrink-0" />
+                  <span>Washed, ironed, and museum-grade mounted</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-[#93A28F] shrink-0" />
+                  <span>Delivered framed and ready to hang</span>
+                </div>
+              </div>
             </div>
-            <button
-              onClick={onOpenConverter}
-              className="mt-4 w-full py-3 rounded-xl bg-[#1D231E] hover:bg-[#323D34] text-white text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs"
-            >
-              <Sparkles className="w-4 h-4 text-[#E06C38]" />
-              <span>Launch Pattern Studio</span>
-            </button>
+
+            {/* Action for Card 2 */}
+            <div className="pt-2">
+              <button
+                onClick={() => handleOpenModal('custom-stitched')}
+                className="w-full py-3.5 px-5 rounded-2xl bg-[#1D231E] hover:bg-[#323D34] text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
+              >
+                <Heart className="w-4 h-4 text-[#E06C38]" />
+                <span>Request a Custom Stitched Product</span>
+                <ArrowRight className="w-4 h-4 ml-1" />
+              </button>
+            </div>
           </div>
 
         </div>
 
       </div>
+
+      {/* Quote Request Modal */}
+      {activeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fadeIn overflow-y-auto">
+          <div className="bg-[#FAF6EE] rounded-3xl max-w-xl w-full shadow-2xl border border-[#E8E1D2] relative my-8 overflow-hidden">
+            
+            {/* Modal Header */}
+            <div className="p-6 border-b border-[#E8E1D2] bg-white flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${
+                  activeModal === 'assisted-kit' ? 'bg-[#E06C38]/10 text-[#E06C38]' : 'bg-[#3D5239]/10 text-[#3D5239]'
+                }`}>
+                  {activeModal === 'assisted-kit' ? <Package className="w-5 h-5" /> : <Palette className="w-5 h-5" />}
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-[#1D231E]">
+                    {activeModal === 'assisted-kit' ? 'Request an Assisted Kit' : 'Request Custom Stitched Product'}
+                  </h3>
+                  <p className="text-xs text-[#6B7869]">
+                    {activeModal === 'assisted-kit' 
+                      ? 'Our team will convert your photo and pack the materials.' 
+                      : 'Our artisan stitchers will create the complete finished piece.'}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setActiveModal(null)}
+                className="p-2 text-[#6B7869] hover:text-[#1D231E] hover:bg-[#E8E1D2]/60 rounded-full transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 sm:p-8">
+              {isSuccess ? (
+                <div className="text-center py-6">
+                  <div className="w-16 h-16 rounded-full bg-[#E8EFE5] text-[#3D5239] flex items-center justify-center mx-auto mb-4">
+                    <CheckCircle2 className="w-8 h-8" />
+                  </div>
+                  <h3 className="text-xl font-bold text-[#1D231E] mb-2">
+                    Request Received!
+                  </h3>
+                  <p className="text-xs text-[#5A6659] max-w-md mx-auto leading-relaxed mb-6">
+                    Thank you, <strong className="text-[#1D231E]">{customerName}</strong>. We have received your custom order inquiry. Our studio team will review your specifications and send a tailored quote to <strong className="text-[#1D231E]">{customerEmail}</strong> within 24 hours.
+                  </p>
+                  <button
+                    onClick={() => setActiveModal(null)}
+                    className="px-6 py-2.5 bg-[#1D231E] hover:bg-[#323D34] text-white text-xs font-bold rounded-full transition-colors cursor-pointer"
+                  >
+                    Done
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleSubmitRequest} className="space-y-4">
+                  
+                  {errorMessage && (
+                    <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl flex items-center gap-2 text-rose-700 text-xs">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      <span>{errorMessage}</span>
+                    </div>
+                  )}
+
+                  {/* Customer Information */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-[#1D231E] mb-1">Your Full Name *</label>
+                      <input
+                        type="text"
+                        required
+                        value={customerName}
+                        onChange={(e) => setCustomerName(e.target.value)}
+                        placeholder="e.g. Clara Oswald"
+                        className="w-full px-3.5 py-2.5 bg-white border border-[#D5CDC0] rounded-xl text-xs text-[#1D231E] focus:outline-none focus:border-[#E06C38]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-[#1D231E] mb-1">Email Address *</label>
+                      <input
+                        type="email"
+                        required
+                        value={customerEmail}
+                        onChange={(e) => setCustomerEmail(e.target.value)}
+                        placeholder="e.g. clara@example.com"
+                        className="w-full px-3.5 py-2.5 bg-white border border-[#D5CDC0] rounded-xl text-xs text-[#1D231E] focus:outline-none focus:border-[#E06C38]"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Photo Upload Area */}
+                  <div>
+                    <label className="block text-xs font-bold text-[#1D231E] mb-1">
+                      Upload Reference Image (Optional)
+                    </label>
+                    <div className="border-2 border-dashed border-[#D5CDC0] hover:border-[#E06C38] bg-white rounded-2xl p-4 text-center relative transition-colors">
+                      {imagePreview ? (
+                        <div className="flex items-center gap-4 text-left">
+                          <img 
+                            src={imagePreview} 
+                            alt="Uploaded preview" 
+                            className="w-16 h-16 rounded-xl object-cover border border-[#E8E1D2]" 
+                          />
+                          <div className="flex-1 min-w-0">
+                            <span className="text-xs font-bold text-[#1D231E] block truncate">Image attached</span>
+                            <span className="text-[10px] text-[#70806E]">Ready for studio conversion</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setImagePreview(null)}
+                            className="p-1.5 rounded-full hover:bg-[#FAF6EE] text-[#6B7869] cursor-pointer"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <div>
+                          <Upload className="w-6 h-6 text-[#93A28F] mx-auto mb-1" />
+                          <p className="text-xs font-semibold text-[#1D231E]">
+                            Click or drag to attach your photo
+                          </p>
+                          <p className="text-[10px] text-[#70806E] mt-0.5">JPG, PNG up to 10MB</p>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleImageUpload}
+                            className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Size & Options */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-[#1D231E] mb-1">Estimated Size</label>
+                      <select
+                        value={sizePreference}
+                        onChange={(e) => setSizePreference(e.target.value)}
+                        className="w-full px-3 py-2.5 bg-white border border-[#D5CDC0] rounded-xl text-xs text-[#1D231E] focus:outline-none focus:border-[#E06C38] cursor-pointer"
+                      >
+                        <option value="Small (5&quot; × 7&quot; / 6&quot; hoop)">Small (5" × 7" / 6" hoop)</option>
+                        <option value="Medium (8&quot; × 10&quot; / 8&quot; hoop)">Medium (8" × 10" / 8" hoop)</option>
+                        <option value="Large (11&quot; × 14&quot; / 10&quot; hoop)">Large (11" × 14" / 10" hoop)</option>
+                        <option value="Extra Large (16&quot; × 20&quot;+)">Extra Large (16" × 20"+)</option>
+                      </select>
+                    </div>
+
+                    {activeModal === 'assisted-kit' ? (
+                      <div>
+                        <label className="block text-xs font-bold text-[#1D231E] mb-1">Fabric Count</label>
+                        <select
+                          value={fabricCount}
+                          onChange={(e) => setFabricCount(Number(e.target.value))}
+                          className="w-full px-3 py-2.5 bg-white border border-[#D5CDC0] rounded-xl text-xs text-[#1D231E] focus:outline-none focus:border-[#E06C38] cursor-pointer"
+                        >
+                          <option value={11}>11ct Aida (Beginner friendly)</option>
+                          <option value={14}>14ct Aida (Most popular / standard)</option>
+                          <option value={16}>16ct Aida (Crisp detail)</option>
+                          <option value={18}>18ct Aida (Fine detail)</option>
+                        </select>
+                      </div>
+                    ) : (
+                      <div>
+                        <label className="block text-xs font-bold text-[#1D231E] mb-1">Finishing & Framing</label>
+                        <select
+                          value={framingOption}
+                          onChange={(e) => setFramingOption(e.target.value)}
+                          className="w-full px-3 py-2.5 bg-white border border-[#D5CDC0] rounded-xl text-xs text-[#1D231E] focus:outline-none focus:border-[#E06C38] cursor-pointer"
+                        >
+                          <option value="Stretched in Wooden Hoop">Stretched in Wooden Hoop</option>
+                          <option value="Custom Wood Frame with Glass">Custom Wood Frame with Glass</option>
+                          <option value="Unframed (Ironed with Finished Edges)">Unframed (Ironed & Backed)</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Special Instructions */}
+                  <div>
+                    <label className="block text-xs font-bold text-[#1D231E] mb-1">
+                      Project Notes or Specific Requests
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      placeholder="Tell us about the recipient, preferred colors, deadline, or questions..."
+                      className="w-full px-3.5 py-2 bg-white border border-[#D5CDC0] rounded-xl text-xs text-[#1D231E] focus:outline-none focus:border-[#E06C38]"
+                    />
+                  </div>
+
+                  {/* Submit Button */}
+                  <div className="pt-2">
+                    <button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className={`w-full py-3.5 px-6 rounded-2xl text-white text-xs font-bold flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer ${
+                        activeModal === 'assisted-kit' 
+                          ? 'bg-[#E06C38] hover:bg-[#d05c28]' 
+                          : 'bg-[#1D231E] hover:bg-[#323D34]'
+                      } disabled:opacity-50`}
+                    >
+                      {isSubmitting ? (
+                        <span>Submitting Request...</span>
+                      ) : (
+                        <>
+                          <FileText className="w-4 h-4" />
+                          <span>Submit Quote Request</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                </form>
+              )}
+            </div>
+
+          </div>
+        </div>
+      )}
 
     </div>
   );

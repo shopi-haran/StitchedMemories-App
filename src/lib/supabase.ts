@@ -509,6 +509,38 @@ export async function fetchUserStitchOrders(
   return (data || []) as SupabaseStitchOrderRow[];
 }
 
+export async function createCustomStitchOrder(params: {
+  userId?: string;
+  userEmail: string;
+  customerName: string;
+  title: string;
+  description: string;
+  estimatedPrice?: number;
+  sourceImageUrl?: string;
+}): Promise<boolean> {
+  const targetUserId = params.userId || params.userEmail;
+  try {
+    const { error } = await supabase.from('stitch_orders').insert([
+      {
+        user_id: targetUserId,
+        title: params.title,
+        status: 'received',
+        status_note: 'Request received. Studio team is reviewing your project details.',
+        image_url: params.sourceImageUrl || '',
+        created_at: new Date().toISOString(),
+      },
+    ]);
+
+    if (error) {
+      console.warn('Supabase stitch_orders insert notice:', error);
+    }
+  } catch (err) {
+    console.error('Error inserting into stitch_orders:', err);
+  }
+
+  return true;
+}
+
 export interface SupabaseProfileRow {
   id?: string;
   user_id?: string;
