@@ -13,7 +13,13 @@ import {
   Lock,
   Eye
 } from 'lucide-react';
-import { fetchUserConversionJobs, fetchUserProfile, SupabaseConversionJobRow, getJobPatternConfig } from '../../lib/supabase';
+import { 
+  fetchUserConversionJobs, 
+  fetchUserProfile, 
+  getEffectiveTier,
+  SupabaseConversionJobRow, 
+  getJobPatternConfig 
+} from '../../lib/supabase';
 import { generatePatternFromImage, PatternConfig } from '../../utils/patternEngine';
 import { exportPatternToPDF, previewPatternPDF, downloadFileFromUrl } from '../../utils/pdfExporter';
 import { StitchTrackerModal } from './StitchTrackerModal';
@@ -46,31 +52,11 @@ export const MyPatternsTab: React.FC<MyPatternsTabProps> = ({ user, onOpenConver
     let active = true;
     async function syncTier() {
       try {
-        const globalOverride = localStorage.getItem('user_tier_global');
-        if (globalOverride === 'free' || globalOverride === 'pro' || globalOverride === 'studio') {
-          if (active) setPlanTier(globalOverride);
-          return;
-        }
-        if (user?.email) {
-          const userOverride = localStorage.getItem(`user_tier_${user.email.toLowerCase()}`);
-          if (userOverride === 'free' || userOverride === 'pro' || userOverride === 'studio') {
-            if (active) setPlanTier(userOverride);
-            return;
-          }
-        }
-        const defaultOverride = localStorage.getItem('user_tier_info.nxuswave@gmail.com');
-        if (defaultOverride === 'free' || defaultOverride === 'pro' || defaultOverride === 'studio') {
-          if (active) setPlanTier(defaultOverride);
-          return;
-        }
-
         if (user?.email || user?.id) {
           const profile = await fetchUserProfile(user.id, user.email);
-          const rawTier = (profile?.subscription_tier || '').toLowerCase();
+          const effective = getEffectiveTier(profile);
           if (active) {
-            if (rawTier.includes('studio')) setPlanTier('studio');
-            else if (rawTier.includes('pro')) setPlanTier('pro');
-            else setPlanTier('free');
+            setPlanTier(effective);
           }
         }
       } catch (err) {

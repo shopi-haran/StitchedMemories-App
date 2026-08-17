@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ShieldAlert, Check, Sparkles, ChevronDown } from 'lucide-react';
-import { fetchUserProfile, updateUserTier } from '../lib/supabase';
+import { fetchUserProfile, updateUserTier, getEffectiveTier } from '../lib/supabase';
 
 interface DevTierSwitcherProps {
   user: { id?: string; name: string; email: string; avatar_url?: string } | null;
@@ -23,14 +23,7 @@ export const DevTierSwitcher: React.FC<DevTierSwitcherProps> = ({ user }) => {
       try {
         const profile = await fetchUserProfile(user.id, user.email);
         if (!active) return;
-        const raw = (profile?.subscription_tier || '').toLowerCase();
-        if (raw.includes('studio')) {
-          setCurrentTier('studio');
-        } else if (raw.includes('pro')) {
-          setCurrentTier('pro');
-        } else {
-          setCurrentTier('free');
-        }
+        setCurrentTier(getEffectiveTier(profile));
       } catch (err) {
         console.error('Failed to fetch dev tier:', err);
       }

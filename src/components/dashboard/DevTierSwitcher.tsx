@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Wrench, CheckCircle2, Sparkles } from 'lucide-react';
-import { fetchUserProfile, updateUserTier } from '../../lib/supabase';
+import { fetchUserProfile, updateUserTier, getEffectiveTier } from '../../lib/supabase';
 
 interface DevTierSwitcherProps {
   user: { id?: string; name: string; email: string };
@@ -21,11 +21,8 @@ export const DevTierSwitcher: React.FC<DevTierSwitcherProps> = ({ user, classNam
     let active = true;
     async function loadCurrentTier() {
       const prof = await fetchUserProfile(user.id, user.email);
-      if (active && prof?.subscription_tier) {
-        const raw = prof.subscription_tier.toLowerCase();
-        if (raw.includes('studio')) setCurrentTier('studio');
-        else if (raw.includes('pro')) setCurrentTier('pro');
-        else setCurrentTier('free');
+      if (active) {
+        setCurrentTier(getEffectiveTier(prof));
       }
     }
     loadCurrentTier();

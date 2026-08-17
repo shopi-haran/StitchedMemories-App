@@ -963,6 +963,57 @@ export interface SupabaseProfileRow {
   [key: string]: any;
 }
 
+export type EffectiveTier = 'free' | 'pro' | 'studio';
+
+/**
+ * Derives the effective subscription tier for feature gating across the app.
+ * Access to paid features requires BOTH:
+ *  1. subscription_tier matching 'pro' or 'studio'
+ *  2. subscription_status === 'active'
+ *
+ * If subscription_status is 'inactive', 'canceled', 'canceling', 'past_due', or missing,
+ * the function returns 'free' so all pro/studio features remain locked.
+ */
+export function getEffectiveTier(
+  profile?: { subscription_tier?: string | null; subscription_status?: string | null } | null
+): EffectiveTier {
+  if (!profile) return 'free';
+
+  const rawTier = (profile.subscription_tier || '').toLowerCase().trim();
+  const rawStatus = (profile.subscription_status || '').toLowerCase().trim();
+
+  // If tier is explicitly free, empty, or missing, always 'free'
+  if (!rawTier || rawTier === 'free') {
+    return 'free';
+  }
+
+  // Paid tier requires subscription_status === 'active'
+  if (rawStatus !== 'active') {
+    return 'free';
+  }
+
+  if (rawTier.includes('studio')) {
+    return 'studio';
+  }
+  if (rawTier.includes('pro')) {
+    return 'pro';
+  }
+
+  return 'free';
+}
+
+/**
+ * Returns a human-friendly display label based on the effective active tier.
+ */
+export function getEffectiveTierLabel(
+  profile?: { subscription_tier?: string | null; subscription_status?: string | null } | null
+): string {
+  const tier = getEffectiveTier(profile);
+  if (tier === 'studio') return 'Studio Plan';
+  if (tier === 'pro') return 'Pro Crafter';
+  return 'Free Crafter';
+}
+
 export async function cancelSubscription(): Promise<{ success: boolean; message?: string }> {
   // Placeholder function for cancelling subscription
   return new Promise((resolve) => {
@@ -1299,7 +1350,8 @@ export async function fetchUserProfile(userId?: string, userEmail?: string): Pro
     profile = { 
       email: userEmail || '', 
       display_name: userEmail ? userEmail.split('@')[0] : 'Crafter',
-      subscription_tier: 'free'
+      subscription_tier: 'free',
+      subscription_status: 'active'
     };
   }
 
@@ -1346,15 +1398,6 @@ export async function updateUserTier(
   userEmail: string,
   tier: 'free' | 'pro' | 'studio'
 ): Promise<boolean> {
-  // Synchronously update local storage and dispatch events immediately
-  try {
-    localStorage.setItem('user_tier_global', tier);
-    if (userEmail) {
-      localStorage.setItem(`user_tier_${userEmail.toLowerCase()}`, tier);
-    }
-    localStorage.setItem('user_tier_info.nxuswave@gmail.com', tier);
-  } catch {}
-
   window.dispatchEvent(new CustomEvent('dev-tier-changed', { detail: tier }));
   window.dispatchEvent(new CustomEvent('tierChanged', { detail: { tier } }));
 
@@ -1364,7 +1407,11 @@ export async function updateUserTier(
     if (existing && existing.id) {
       await supabase
         .from('profiles')
-        .update({ subscription_tier: tier, updated_at: new Date().toISOString() })
+        .update({ 
+          subscription_tier: tier, 
+          subscription_status: 'active',
+          updated_at: new Date().toISOString() 
+        })
         .eq('id', existing.id);
     } else {
       await supabase
@@ -1373,6 +1420,7 @@ export async function updateUserTier(
           id: userId || 'info.nxuswave@gmail.com',
           user_id: userId || 'info.nxuswave@gmail.com',
           subscription_tier: tier,
+          subscription_status: 'active',
           updated_at: new Date().toISOString()
         });
     }
@@ -1383,6 +1431,7 @@ export async function updateUserTier(
         {
           id: userId || userEmail || 'info.nxuswave@gmail.com',
           subscription_tier: tier,
+          subscription_status: 'active',
           updated_at: new Date().toISOString(),
         }
       ]);

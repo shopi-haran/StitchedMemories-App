@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, ShieldCheck, CreditCard, Lock, Sparkles, Check, ArrowRight, AlertCircle, CheckCircle2, Zap } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { supabase, updateUserTier } from '../lib/supabase';
 
 interface PaymentGatewayModalProps {
   isOpen: boolean;
@@ -43,17 +43,9 @@ export const PaymentGatewayModal: React.FC<PaymentGatewayModalProps> = ({
       // Simulate network response for payment gateway processing
       await new Promise((resolve) => setTimeout(resolve, 1200));
 
-      // Attempt to update user subscription_tier in Supabase database if logged in
-      if (user?.id) {
-        await supabase
-          .from('user_profiles')
-          .upsert([
-            {
-              id: user.id,
-              subscription_tier: plan,
-              updated_at: new Date().toISOString(),
-            },
-          ]);
+      // Update user subscription_tier and subscription_status ('active') in Supabase database if logged in
+      if (user?.id || user?.email) {
+        await updateUserTier(user.id || user.email, user.email, plan);
       }
 
       setIsSuccess(true);

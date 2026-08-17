@@ -16,7 +16,17 @@ import {
   createScaledThumbnail
 } from '../utils/patternEngine';
 import { exportPatternToPDF, generatePatternPDFBlob } from '../utils/pdfExporter';
-import { fetchUserProfile, saveUserConversionJob, uploadPDFToSupabase, uploadThumbnailToSupabase, uploadOriginalPhotoToSupabase, uploadPatternPreviewToSupabase, createOrderRequest, supabase } from '../lib/supabase';
+import { 
+  fetchUserProfile, 
+  getEffectiveTier,
+  saveUserConversionJob, 
+  uploadPDFToSupabase, 
+  uploadThumbnailToSupabase, 
+  uploadOriginalPhotoToSupabase, 
+  uploadPatternPreviewToSupabase, 
+  createOrderRequest, 
+  supabase 
+} from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { AuthModal } from './AuthModal';
 import { StudioImageEditorModal } from './StudioImageEditorModal';
@@ -55,14 +65,7 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
       if (effectiveUser?.id || effectiveUser?.email) {
         try {
           const profile = await fetchUserProfile(effectiveUser.id, effectiveUser.email);
-          const rawTier = (profile?.subscription_tier || '').toLowerCase();
-          if (rawTier.includes('studio')) {
-            targetTier = 'studio';
-          } else if (rawTier.includes('pro')) {
-            targetTier = 'pro';
-          } else {
-            targetTier = 'free';
-          }
+          targetTier = getEffectiveTier(profile);
         } catch (err) {
           console.error('Error fetching user profile for converter tier:', err);
           targetTier = 'free';

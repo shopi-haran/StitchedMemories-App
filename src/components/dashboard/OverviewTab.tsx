@@ -22,6 +22,8 @@ import {
   fetchUserStoreOrders, 
   fetchUserStitchOrders, 
   cancelSubscription, 
+  getEffectiveTier,
+  getEffectiveTierLabel,
   SupabaseProfileRow 
 } from '../../lib/supabase';
 
@@ -129,9 +131,15 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
     }
   };
 
-  const tier = profile?.subscription_tier || 'Free Crafter';
-  const status = profile?.subscription_status || 'active';
+  const effectiveTier = getEffectiveTier(profile);
+  const status = (profile?.subscription_status || 'active').toLowerCase();
   const accessUntil = profile?.access_until;
+
+  const displayTierTitle = status === 'active' 
+    ? getEffectiveTierLabel(profile)
+    : (profile?.subscription_tier && profile.subscription_tier.toLowerCase() !== 'free'
+        ? `${profile.subscription_tier.charAt(0).toUpperCase() + profile.subscription_tier.slice(1)} (Inactive)`
+        : 'Free Crafter');
 
   return (
     <div className="space-y-8 animate-fadeIn">
@@ -174,7 +182,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
 
             <div className="flex items-center gap-3">
               <h3 className="text-2xl font-bold text-white tracking-tight">
-                {tier}
+                {displayTierTitle}
               </h3>
               
               {/* Status Badge */}
@@ -183,7 +191,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                   ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
                   : status === 'canceling' || status === 'canceled'
                   ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
-                  : 'bg-white/10 text-white/80 border-white/20'
+                  : 'bg-rose-500/20 text-rose-300 border-rose-500/30'
               }`}>
                 <span className={`w-2 h-2 rounded-full ${
                   status === 'active' ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'
@@ -200,26 +208,28 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             </div>
           </div>
 
-          {/* Action Button: Cancel Subscription */}
-          <div className="self-start md:self-center">
-            <button
-              onClick={() => setShowCancelDialog(true)}
-              disabled={isCancelling}
-              className="px-5 py-2.5 bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 hover:text-white border border-rose-500/40 text-xs font-bold rounded-full transition-all cursor-pointer flex items-center gap-2 shadow-xs disabled:opacity-50"
-            >
-              {isCancelling ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin text-rose-300" />
-                  <span>Cancelling...</span>
-                </>
-              ) : (
-                <>
-                  <ShieldAlert className="w-4 h-4 text-rose-300" />
-                  <span>Cancel Subscription</span>
-                </>
-              )}
-            </button>
-          </div>
+          {/* Action Button: Cancel Subscription (Only shown for active paid tiers) */}
+          {effectiveTier !== 'free' && status === 'active' && (
+            <div className="self-start md:self-center">
+              <button
+                onClick={() => setShowCancelDialog(true)}
+                disabled={isCancelling}
+                className="px-5 py-2.5 bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 hover:text-white border border-rose-500/40 text-xs font-bold rounded-full transition-all cursor-pointer flex items-center gap-2 shadow-xs disabled:opacity-50"
+              >
+                {isCancelling ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-rose-300" />
+                    <span>Cancelling...</span>
+                  </>
+                ) : (
+                  <>
+                    <ShieldAlert className="w-4 h-4 text-rose-300" />
+                    <span>Cancel Subscription</span>
+                  </>
+                )}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Cancellation Confirmation Success Alert */}
@@ -334,7 +344,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             </div>
 
             <p className="text-xs text-[#5A6659] leading-relaxed">
-              Are you sure you want to cancel your <strong className="text-[#1D231E]">{tier}</strong> subscription? You will retain access until <strong className="text-[#1D231E]">{formatDate(accessUntil)}</strong>, after which your account will revert to the free plan.
+              Are you sure you want to cancel your <strong className="text-[#1D231E]">{displayTierTitle}</strong> subscription? You will retain access until <strong className="text-[#1D231E]">{formatDate(accessUntil)}</strong>, after which your account will revert to the free plan.
             </p>
 
             <div className="flex flex-col sm:flex-row items-center gap-3 pt-2">

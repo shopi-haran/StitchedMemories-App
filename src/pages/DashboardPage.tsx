@@ -19,7 +19,7 @@ import { MyPatternsTab } from '../components/dashboard/MyPatternsTab';
 import { PurchasesTab } from '../components/dashboard/PurchasesTab';
 import { CustomOrdersTab } from '../components/dashboard/CustomOrdersTab';
 import { ProfileTab } from '../components/dashboard/ProfileTab';
-import { fetchUserProfile } from '../lib/supabase';
+import { fetchUserProfile, getEffectiveTierLabel } from '../lib/supabase';
 
 interface UserProfile {
   id?: string;
@@ -60,11 +60,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     async function syncTier() {
       if (user?.email) {
         const prof = await fetchUserProfile(user.id, user.email);
-        if (active && prof?.subscription_tier) {
-          const raw = prof.subscription_tier.toLowerCase();
-          if (raw.includes('studio')) setCurrentTierLabel('Studio Plan');
-          else if (raw.includes('pro')) setCurrentTierLabel('Pro Crafter');
-          else setCurrentTierLabel('Free Crafter');
+        if (active) {
+          setCurrentTierLabel(getEffectiveTierLabel(prof));
         }
       }
     }
