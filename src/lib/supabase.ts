@@ -465,27 +465,36 @@ export async function fetchUserStoreOrders(
   userId?: string,
   userEmail?: string
 ): Promise<SupabaseOrderRow[]> {
-  let query = supabase
-    .from('orders')
-    .select('*')
-    .eq('order_type', 'store');
+  try {
+    let query = supabase
+      .from('orders')
+      .select('*')
+      .eq('order_type', 'store');
 
-  if (userId) {
-    query = query.eq('user_id', userId);
-  } else if (userEmail) {
-    query = query.eq('user_id', userEmail);
-  }
+    if (userId) {
+      query = query.eq('user_id', userId);
+    } else if (userEmail) {
+      query = query.eq('user_id', userEmail);
+    }
 
-  query = query.order('created_at', { ascending: false });
+    query = query.order('created_at', { ascending: false });
 
-  const { data, error } = await query;
+    const { data, error } = await query;
 
-  if (error) {
-    console.error('Error fetching store orders from Supabase:', error);
+    if (error) {
+      if (error.code === '42P17') {
+        console.warn('[fetchUserStoreOrders] Supabase RLS policy recursion on profiles/orders relation (42P17). Handled gracefully.');
+      } else {
+        console.warn('[fetchUserStoreOrders] Notice fetching store orders:', error.message || error);
+      }
+      return [];
+    }
+
+    return (data || []) as SupabaseOrderRow[];
+  } catch (err: any) {
+    console.warn('[fetchUserStoreOrders] Unexpected exception fetching store orders:', err?.message || err);
     return [];
   }
-
-  return (data || []) as SupabaseOrderRow[];
 }
 
 export interface CreateOrderRequestParams {
@@ -743,8 +752,12 @@ export async function fetchUserStitchOrders(
         allResults.push(mapped);
       }
     }
-  } catch (err) {
-    console.error('Error fetching custom orders from orders table:', err);
+  } catch (err: any) {
+    if (err?.code === '42P17') {
+      console.warn('[fetchUserStitchOrders] RLS recursion on orders table (42P17). Handled gracefully.');
+    } else {
+      console.warn('[fetchUserStitchOrders] Notice fetching custom orders from orders table:', err?.message || err);
+    }
   }
 
   // 2. Fetch from stitch_orders table
@@ -776,8 +789,8 @@ export async function fetchUserStitchOrders(
         }
       }
     }
-  } catch (err) {
-    console.error('Error fetching stitch_orders from Supabase:', err);
+  } catch (err: any) {
+    console.warn('[fetchUserStitchOrders] Notice fetching stitch_orders:', err?.message || err);
   }
 
   // Sort newest first
@@ -892,8 +905,12 @@ export async function fetchAllAdminOrders(): Promise<SupabaseStitchOrderRow[]> {
         allResults.push(mapped);
       }
     }
-  } catch (err) {
-    console.error('Error fetching all admin orders:', err);
+  } catch (err: any) {
+    if (err?.code === '42P17') {
+      console.warn('[fetchAllAdminOrders] Supabase orders table RLS recursion (42P17). Handled gracefully.');
+    } else {
+      console.warn('[fetchAllAdminOrders] Notice fetching admin orders:', err?.message || err);
+    }
   }
 
   // Also query stitch_orders table for legacy items
@@ -922,8 +939,8 @@ export async function fetchAllAdminOrders(): Promise<SupabaseStitchOrderRow[]> {
         }
       }
     }
-  } catch (err) {
-    console.error('Error fetching admin stitch_orders:', err);
+  } catch (err: any) {
+    console.warn('[fetchAllAdminOrders] Notice fetching admin stitch_orders:', err?.message || err);
   }
 
   allResults.sort((a, b) => {
@@ -1566,20 +1583,24 @@ export async function fetchUserProfile(userId?: string, userEmail?: string): Pro
 
   try {
     if (userId) {
-      const { data } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
-      if (data) profile = data as SupabaseProfileRow;
+      const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
+      if (!error && data) profile = data as SupabaseProfileRow;
       if (!profile) {
-        const { data: byUserId } = await supabase.from('profiles').select('*').eq('user_id', userId).maybeSingle();
-        if (byUserId) profile = byUserId as SupabaseProfileRow;
+        const { data: byUserId, error: errUserId } = await supabase.from('profiles').select('*').eq('user_id', userId).maybeSingle();
+        if (!errUserId && byUserId) profile = byUserId as SupabaseProfileRow;
       }
     }
 
     if (!profile && userEmail) {
-      const { data: byEmail } = await supabase.from('profiles').select('*').ilike('email', userEmail.trim()).maybeSingle();
-      if (byEmail) profile = byEmail as SupabaseProfileRow;
+      const { data: byEmail, error: errEmail } = await supabase.from('profiles').select('*').ilike('email', userEmail.trim()).maybeSingle();
+      if (!errEmail && byEmail) profile = byEmail as SupabaseProfileRow;
     }
-  } catch (err) {
-    console.warn('[fetchUserProfile] Error fetching profile:', err);
+  } catch (err: any) {
+    if (err?.code === '42P17') {
+      console.warn('[fetchUserProfile] Supabase profiles RLS recursion (42P17). Returning profile fallback safely.');
+    } else {
+      console.warn('[fetchUserProfile] Notice fetching profile:', err?.message || err);
+    }
   }
 
   if (!profile) {

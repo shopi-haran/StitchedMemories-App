@@ -50,36 +50,58 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       try {
         const profile = await fetchUserProfile(sess.user.id, sess.user.email);
+        const userMeta = sess.user.user_metadata || {};
+        const appMeta = sess.user.app_metadata || {};
+
         const displayName =
           profile?.display_name ||
-          sess.user.user_metadata?.full_name ||
-          sess.user.user_metadata?.display_name ||
+          userMeta.full_name ||
+          userMeta.display_name ||
           sess.user.email?.split('@')[0] ||
           'Crafter';
         const avatarUrl =
           profile?.avatar_url ||
-          sess.user.user_metadata?.avatar_url ||
+          userMeta.avatar_url ||
           '';
+
+        const tier = 
+          profile?.subscription_tier && profile.subscription_tier !== 'free'
+            ? profile.subscription_tier
+            : (userMeta.subscription_tier || appMeta.subscription_tier || profile?.subscription_tier || 'free');
+
+        const status =
+          profile?.subscription_status ||
+          userMeta.subscription_status ||
+          appMeta.subscription_status ||
+          'active';
+
+        const role =
+          profile?.role ||
+          userMeta.role ||
+          appMeta.role ||
+          'user';
 
         setUser({
           id: sess.user.id,
           name: displayName,
           email: sess.user.email || '',
           avatar_url: avatarUrl,
-          role: profile?.role || 'user',
-          subscription_tier: profile?.subscription_tier || 'free',
-          subscription_status: profile?.subscription_status || 'active',
+          role: role,
+          subscription_tier: tier,
+          subscription_status: status,
         });
       } catch (err) {
-        console.error('[AuthContext] Error fetching profile:', err);
+        console.warn('[AuthContext] Notice during profile sync, using session metadata:', err);
+        const userMeta = sess.user.user_metadata || {};
+        const appMeta = sess.user.app_metadata || {};
         setUser({
           id: sess.user.id,
-          name: sess.user.user_metadata?.full_name || sess.user.email?.split('@')[0] || 'Crafter',
+          name: userMeta.full_name || userMeta.display_name || sess.user.email?.split('@')[0] || 'Crafter',
           email: sess.user.email || '',
-          avatar_url: sess.user.user_metadata?.avatar_url || '',
-          role: 'user',
-          subscription_tier: 'free',
-          subscription_status: 'active',
+          avatar_url: userMeta.avatar_url || '',
+          role: userMeta.role || appMeta.role || 'user',
+          subscription_tier: userMeta.subscription_tier || appMeta.subscription_tier || 'free',
+          subscription_status: userMeta.subscription_status || appMeta.subscription_status || 'active',
         });
       }
     } else {
