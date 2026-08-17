@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Sparkles, BookOpen, ShoppingBag, Tag, User, LogIn, UserPlus, LogOut, ChevronDown, Check, Info, MessageSquare, LayoutDashboard } from 'lucide-react';
+import { Sparkles, BookOpen, ShoppingBag, Tag, User, LogIn, UserPlus, LogOut, ChevronDown, Check, Info, MessageSquare, LayoutDashboard, ShieldCheck } from 'lucide-react';
 import { AuthModal } from './AuthModal';
 import { useAuth } from '../context/AuthContext';
 
@@ -8,6 +8,7 @@ interface UserProfile {
   email: string;
   avatar_url?: string;
   avatarUrl?: string;
+  role?: string;
 }
 
 interface HeaderProps {
@@ -192,6 +193,19 @@ export const Header: React.FC<HeaderProps> = ({
                         <User className="w-3.5 h-3.5 text-[#556653]" />
                         <span>Profile</span>
                       </button>
+
+                      {((user?.role || '').toLowerCase() === 'admin' || (authUser?.role || '').toLowerCase() === 'admin') && (
+                        <button
+                          onClick={() => {
+                            setIsProfileDropdownOpen(false);
+                            onNavigateToSection('admin');
+                          }}
+                          className="w-full text-left px-4 py-2 text-xs font-bold text-[#E06C38] hover:bg-[#FAF6EE] flex items-center gap-2 cursor-pointer"
+                        >
+                          <ShieldCheck className="w-3.5 h-3.5 text-[#E06C38]" />
+                          <span>Admin Studio</span>
+                        </button>
+                      )}
                     </div>
 
                     <div className="border-t border-[#E8E1D2]/60 pt-1 mt-1">

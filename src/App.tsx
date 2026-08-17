@@ -14,12 +14,12 @@ import { BlogPage } from './pages/BlogPage';
 import { ShopPage } from './pages/ShopPage';
 import { DashboardPage, DashboardTab } from './pages/DashboardPage';
 import { LoginPage } from './pages/LoginPage';
-import { AdminQuotesPage } from './pages/AdminQuotesPage';
+import { AdminPage } from './pages/AdminPage';
 import { AuthModal } from './components/AuthModal';
 import { PaymentGatewayModal } from './components/PaymentGatewayModal';
 import { useAuth } from './context/AuthContext';
 
-export type PageName = 'home' | 'about-contact' | 'blog' | 'shop' | 'dashboard' | 'login' | 'admin-quotes';
+export type PageName = 'home' | 'about-contact' | 'blog' | 'shop' | 'dashboard' | 'login' | 'admin' | 'admin-quotes';
 
 export default function App() {
   const { user, isLoggedIn, isLoading, signOut: authSignOut, refreshProfile } = useAuth();
@@ -57,6 +57,14 @@ export default function App() {
         } else {
           setCurrentPage('login');
         }
+      } else if (path.startsWith('/admin')) {
+        if (isLoggedIn && (user?.role || '').toLowerCase() === 'admin') {
+          setCurrentPage('admin');
+        } else {
+          // Protected route: Redirect non-admins or logged out users to homepage
+          window.history.replaceState({}, '', '/');
+          setCurrentPage('home');
+        }
       } else if (path.startsWith('/blog')) {
         setCurrentPage('blog');
       } else if (path.startsWith('/shop') || path.startsWith('/marketplace')) {
@@ -71,7 +79,7 @@ export default function App() {
     handleUrlSync();
     window.addEventListener('popstate', handleUrlSync);
     return () => window.removeEventListener('popstate', handleUrlSync);
-  }, [isLoggedIn, isLoading]);
+  }, [isLoggedIn, isLoading, user?.role]);
 
   const handleSelectPlanFromPricing = (plan: 'free' | 'pro' | 'studio', cycle: 'monthly' | 'annual') => {
     setPricingPlan(plan);
@@ -134,12 +142,25 @@ export default function App() {
       return;
     }
 
+    // Route protection check for admin
+    if ((page === 'admin' || page === 'admin-quotes') && (!isLoggedIn || (user?.role || '').toLowerCase() !== 'admin')) {
+      window.history.pushState({}, '', '/');
+      setCurrentPage('home');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
     setCurrentPage(page);
     window.history.pushState({}, '', path);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleNavigateToSection = (sectionId: string) => {
+    if (sectionId === 'admin' || sectionId === 'admin-page' || sectionId === 'admin-quotes') {
+      navigateToPage('admin', '/admin');
+      return;
+    }
+
     if (sectionId === 'home') {
       navigateToPage('home', '/');
       return;
@@ -201,8 +222,8 @@ export default function App() {
   return (
     <div className="min-h-screen flex flex-col bg-[#FAF6EE] text-[#1D231E] font-sans selection:bg-[#E06C38]/20 selection:text-[#E06C38]">
       
-      {/* Top Header Navigation (Hide header on pure standalone login page if desired or keep consistent) */}
-      {currentPage !== 'login' && (
+      {/* Top Header Navigation (Hide header on pure standalone login page or admin portal) */}
+      {currentPage !== 'login' && currentPage !== 'admin' && currentPage !== 'admin-quotes' && (
         <Header
           user={user}
           onLoginSuccess={handleLoginSuccess}
@@ -287,10 +308,17 @@ export default function App() {
             onGoHome={() => handleNavigateToSection('home')}
           />
         )}
+
+        {(currentPage === 'admin' || currentPage === 'admin-quotes') && user && (user.role || '').toLowerCase() === 'admin' && (
+          <AdminPage
+            user={user}
+            onGoHome={() => handleNavigateToSection('home')}
+          />
+        )}
       </main>
 
       {/* Footer */}
-      {currentPage !== 'login' && (
+      {currentPage !== 'login' && currentPage !== 'admin' && currentPage !== 'admin-quotes' && (
         <Footer
           onOpenConverter={() => setIsConverterOpen(true)}
           onNavigateToSection={handleNavigateToSection}

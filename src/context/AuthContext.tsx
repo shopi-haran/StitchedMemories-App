@@ -7,6 +7,9 @@ export interface UserProfile {
   name: string;
   email: string;
   avatar_url?: string;
+  role?: string;
+  subscription_tier?: string;
+  subscription_status?: string;
 }
 
 interface AuthContextType {
@@ -63,6 +66,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           name: displayName,
           email: sess.user.email || '',
           avatar_url: avatarUrl,
+          role: profile?.role || 'user',
+          subscription_tier: profile?.subscription_tier || 'free',
+          subscription_status: profile?.subscription_status || 'active',
         });
       } catch (err) {
         console.error('[AuthContext] Error fetching profile:', err);
@@ -71,6 +77,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           name: sess.user.user_metadata?.full_name || sess.user.email?.split('@')[0] || 'Crafter',
           email: sess.user.email || '',
           avatar_url: sess.user.user_metadata?.avatar_url || '',
+          role: 'user',
+          subscription_tier: 'free',
+          subscription_status: 'active',
         });
       }
     } else {
