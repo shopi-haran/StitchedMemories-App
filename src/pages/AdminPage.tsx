@@ -33,11 +33,13 @@ import {
   Activity,
   CreditCard,
   TrendingUp,
-  Tag
+  Tag,
+  BookOpen
 } from 'lucide-react';
 import {
   fetchAllAdminOrders,
   fetchAllProfiles,
+  fetchAllAdminBlogPosts,
   submitAdminQuote,
   updateAdminOrderDetails,
   SupabaseStitchOrderRow,
@@ -47,11 +49,14 @@ import {
   supabase,
 } from '../lib/supabase';
 import { UserProfile } from '../context/AuthContext';
+import { BlogPost } from '../types';
+import { BlogPostsTab } from '../components/admin/BlogPostsTab';
+import { BlogEditorModal } from '../components/admin/BlogEditorModal';
 
 interface AdminPageProps {
   user: UserProfile | null;
   onGoHome: () => void;
-  initialTab?: 'pending_quotes' | 'all_orders' | 'customers';
+  initialTab?: 'pending_quotes' | 'all_orders' | 'customers' | 'blog_posts';
 }
 
 export const AdminPage: React.FC<AdminPageProps> = ({
@@ -59,13 +64,18 @@ export const AdminPage: React.FC<AdminPageProps> = ({
   onGoHome,
   initialTab = 'pending_quotes',
 }) => {
-  const [activeTab, setActiveTab] = useState<'pending_quotes' | 'all_orders' | 'customers'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'pending_quotes' | 'all_orders' | 'customers' | 'blog_posts'>(initialTab);
   const [orders, setOrders] = useState<SupabaseStitchOrderRow[]>([]);
   const [profiles, setProfiles] = useState<SupabaseProfileRow[]>([]);
+  const [blogPosts, setBlogPosts] = useState<BlogPost[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successToast, setSuccessToast] = useState<string | null>(null);
+
+  // Blog Editor State
+  const [isBlogEditorOpen, setIsBlogEditorOpen] = useState(false);
+  const [selectedPostForEdit, setSelectedPostForEdit] = useState<BlogPost | null>(null);
 
   // Quote Form Modal State
   const [selectedQuoteOrder, setSelectedQuoteOrder] = useState<SupabaseStitchOrderRow | null>(null);
@@ -105,20 +115,22 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     setTimeout(() => setSuccessToast(null), 4000);
   };
 
-  // Load all admin orders & customer profiles
+  // Load all admin orders, customer profiles & blog articles
   const loadData = useCallback(async (quiet = false) => {
     if (!quiet) setIsLoading(true);
     else setIsRefreshing(true);
     setErrorMessage(null);
 
     try {
-      const [fetchedOrders, fetchedProfiles] = await Promise.all([
+      const [fetchedOrders, fetchedProfiles, fetchedBlogPosts] = await Promise.all([
         fetchAllAdminOrders(),
         fetchAllProfiles(),
+        fetchAllAdminBlogPosts(),
       ]);
 
       setOrders(fetchedOrders);
       setProfiles(fetchedProfiles);
+      setBlogPosts(fetchedBlogPosts);
     } catch (err: any) {
       console.error('[AdminPage] Error loading data:', err);
       setErrorMessage('Failed to fetch data from Supabase. Please check connection and permissions.');
@@ -555,6 +567,24 @@ export const AdminPage: React.FC<AdminPageProps> = ({
               <span>Customers</span>
               <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-white/10 text-white/80">
                 {profiles.length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => {
+                setActiveTab('blog_posts');
+                setCustomerOrdersFilterEmail(null);
+              }}
+              className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
+                activeTab === 'blog_posts'
+                  ? 'border-[#E06C38] text-[#E06C38] bg-white/5 font-semibold'
+                  : 'border-transparent text-white/70 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <BookOpen className="w-4 h-4" />
+              <span>Blog Posts</span>
+              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-white/10 text-white/80">
+                {blogPosts.length}
               </span>
             </button>
           </div>
@@ -1199,6 +1229,26 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                 </div>
               </div>
             )}
+
+            {/* ========================================================================= */}
+            {/* TAB 4: BLOG POSTS */}
+            {/* ========================================================================= */}
+            {activeTab === 'blog_posts' && (
+              <BlogPostsTab
+                posts={blogPosts}
+                isLoading={isLoading}
+                onRefresh={() => loadData(true)}
+                onOpenNewPost={() => {
+                  setSelectedPostForEdit(null);
+                  setIsBlogEditorOpen(true);
+                }}
+                onEditPost={(post) => {
+                  setSelectedPostForEdit(post);
+                  setIsBlogEditorOpen(true);
+                }}
+                showToast={showToast}
+              />
+            )}
           </>
         )}
       </div>
@@ -1573,6 +1623,25 @@ export const AdminPage: React.FC<AdminPageProps> = ({
             </p>
           </div>
         </div>
+      )}
+      {/* ========================================================================= */}
+      {/* MODAL 4: BLOG POST EDITOR MODAL */}
+      {/* ========================================================================= */}
+      {isBlogEditorOpen && (
+        <BlogEditorModal
+          isOpen={isBlogEditorOpen}
+          post={selectedPostForEdit}
+          onClose={() => {
+            setIsBlogEditorOpen(false);
+            setSelectedPostForEdit(null);
+          }}
+          onSaved={async (savedPost, isPublished) => {
+            showToast(`Article "${savedPost.title}" ${isPublished ? 'published' : 'saved as draft'} successfully!`);
+            await loadData(true);
+          }}
+          currentUserName={user?.name || user?.email || 'Elena Rostova'}
+          currentUserAvatar={user?.avatar_url || ''}
+        />
       )}
     </div>
   );

@@ -16,11 +16,14 @@ export type ContentSection = BlogPostSection;
 
 export interface BlogPost {
   id: string;
+  slug?: string;
   title: string;
   excerpt: string;
   category: string;
   readTime: string;
   date: string;
+  published_at?: string | null;
+  published?: boolean;
   imageUrl: string;
   author: {
     name: string;

@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { BlogPost, ContentSection } from '../types';
+import { BlogPost, BlogPostSection, ContentSection } from '../types';
 import { createScaledThumbnail, PatternConfig } from '../utils/patternEngine';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://flwkfgtjkgcluuphibyp.supabase.co';
@@ -19,13 +19,16 @@ export interface SupabaseBlogPostRow {
   excerpt: string;
   category: string;
   read_time: string;
-  published_at: string;
+  published_at?: string | null;
+  published?: boolean;
   cover_image_url: string;
   author: {
     name: string;
     avatarUrl: string;
-  };
+  } | string;
   content_sections?: ContentSection[];
+  created_at?: string;
+  [key: string]: any;
 }
 
 export function mapRowToBlogPost(row: SupabaseBlogPostRow): BlogPost {
@@ -52,13 +55,21 @@ export function mapRowToBlogPost(row: SupabaseBlogPostRow): BlogPost {
   const rawSections = row.content_sections || (row as any).contentSections;
   const contentSections = Array.isArray(rawSections) ? rawSections : [];
 
+  // Determine published state: if row.published is explicitly boolean use it; otherwise true if published_at is set
+  const isPublished = typeof row.published === 'boolean' 
+    ? row.published 
+    : Boolean(row.published_at && row.published_at !== '');
+
   return {
     id: String(row.id),
+    slug: String(row.id),
     title: row.title || '',
     excerpt: row.excerpt || '',
     category: row.category || 'Guide & Tips',
     readTime: row.read_time || (row as any).readTime || '',
     date: dateFormatted,
+    published_at: row.published_at || null,
+    published: isPublished,
     imageUrl: row.cover_image_url || (row as any).imageUrl || '',
     author: {
       name: authorObj?.name || 'Author',
@@ -68,33 +79,222 @@ export function mapRowToBlogPost(row: SupabaseBlogPostRow): BlogPost {
   };
 }
 
+/**
+ * Fetches public blog posts (published only).
+ */
 export async function fetchBlogPosts(): Promise<BlogPost[]> {
-  const { data, error } = await supabase
-    .from('blog_posts')
-    .select('*')
-    .order('published_at', { ascending: false });
+  try {
+    const { data, error } = await supabase
+      .from('blog_posts')
+      .select('*')
+      .order('published_at', { ascending: false, nullsFirst: false });
 
-  if (error) {
-    console.error('Error fetching blog_posts from Supabase:', error);
-    throw error;
+    if (error) {
+      console.error('Error fetching blog_posts from Supabase:', error);
+      return [];
+    }
+
+    const allMapped = (data || []).map(mapRowToBlogPost);
+    // Return only published posts on the public blog
+    return allMapped.filter((p) => p.published !== false && p.date);
+  } catch (err) {
+    console.error('Unexpected error fetching public blog posts:', err);
+    return [];
   }
+}
 
-  return (data || []).map(mapRowToBlogPost);
+/**
+ * Fetches all blog posts for the Admin panel (both published & drafts).
+ */
+export async function fetchAllAdminBlogPosts(): Promise<BlogPost[]> {
+  try {
+    const { data, error } = await supabase
+      .from('blog_posts')
+      .select('*')
+      .order('published_at', { ascending: false, nullsFirst: false });
+
+    if (error) {
+      console.error('Error fetching admin blog_posts from Supabase:', error);
+      throw error;
+    }
+
+    return (data || []).map(mapRowToBlogPost);
+  } catch (err) {
+    console.error('Unexpected error in fetchAllAdminBlogPosts:', err);
+    throw err;
+  }
 }
 
 export async function fetchBlogPostById(id: string): Promise<BlogPost | null> {
-  const { data, error } = await supabase
-    .from('blog_posts')
-    .select('*')
-    .eq('id', id)
-    .maybeSingle();
+  try {
+    const { data, error } = await supabase
+      .from('blog_posts')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
 
-  if (error || !data) {
-    console.error('Error fetching blog_post by id from Supabase:', error);
+    if (error || !data) {
+      console.error('Error fetching blog_post by id from Supabase:', error);
+      return null;
+    }
+
+    return mapRowToBlogPost(data);
+  } catch (err) {
+    console.error('Unexpected error fetching blog post by id:', err);
     return null;
   }
+}
 
-  return mapRowToBlogPost(data);
+/**
+ * Upserts a blog post in Supabase blog_posts table.
+ */
+export async function upsertBlogPost(payload: {
+  id: string;
+  title: string;
+  excerpt: string;
+  category: string;
+  read_time: string;
+  published_at: string | null;
+  cover_image_url: string;
+  author: { name: string; avatarUrl: string };
+  content_sections: BlogPostSection[];
+  published?: boolean;
+}): Promise<{ success: boolean; data?: BlogPost; error?: any }> {
+  try {
+    const rowPayload: any = {
+      id: payload.id.trim(),
+      title: payload.title.trim(),
+      excerpt: payload.excerpt.trim(),
+      category: payload.category.trim(),
+      read_time: payload.read_time.trim(),
+      published_at: payload.published_at,
+      cover_image_url: payload.cover_image_url.trim(),
+      author: payload.author,
+      content_sections: payload.content_sections,
+    };
+
+    if (typeof payload.published === 'boolean') {
+      rowPayload.published = payload.published;
+    }
+
+    // Try upsert with all fields
+    let { data, error } = await supabase
+      .from('blog_posts')
+      .upsert(rowPayload, { onConflict: 'id' })
+      .select()
+      .maybeSingle();
+
+    // If 'published' column does not exist (error 42703), retry without 'published' field
+    if (error && (error.code === '42703' || String(error.message).includes('published'))) {
+      console.warn('Column "published" not found in blog_posts schema, retrying without it...');
+      delete rowPayload.published;
+      const retry = await supabase
+        .from('blog_posts')
+        .upsert(rowPayload, { onConflict: 'id' })
+        .select()
+        .maybeSingle();
+      data = retry.data;
+      error = retry.error;
+    }
+
+    if (error) {
+      console.error('[upsertBlogPost] Supabase error:', error);
+      return { success: false, error };
+    }
+
+    const mapped = data ? mapRowToBlogPost(data) : {
+      id: rowPayload.id,
+      title: rowPayload.title,
+      excerpt: rowPayload.excerpt,
+      category: rowPayload.category,
+      readTime: rowPayload.read_time,
+      date: rowPayload.published_at ? new Date(rowPayload.published_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Draft',
+      published_at: rowPayload.published_at,
+      published: payload.published !== false && Boolean(rowPayload.published_at),
+      imageUrl: rowPayload.cover_image_url,
+      author: rowPayload.author,
+      contentSections: rowPayload.content_sections,
+    };
+
+    return { success: true, data: mapped };
+  } catch (err: any) {
+    console.error('[upsertBlogPost] Exception:', err);
+    return { success: false, error: err };
+  }
+}
+
+/**
+ * Deletes a blog post by its id/slug.
+ */
+export async function deleteBlogPost(id: string): Promise<{ success: boolean; error?: any }> {
+  try {
+    const { error } = await supabase
+      .from('blog_posts')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.error('[deleteBlogPost] Supabase delete error:', error);
+      return { success: false, error };
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    console.error('[deleteBlogPost] Exception deleting blog post:', err);
+    return { success: false, error: err };
+  }
+}
+
+/**
+ * Uploads an image to the blog storage bucket under a folder named after the post's slug.
+ * Sets up fallback to data URL if bucket permissions are restricted.
+ */
+export async function uploadBlogImageToSupabase(
+  file: File | Blob,
+  slug: string,
+  prefix: string = 'img'
+): Promise<string> {
+  const cleanSlug = (slug || 'untitled-post').toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+  const extension = file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp' : 'jpg';
+  const fileName = `${cleanSlug}/${prefix}_${Date.now()}.${extension}`;
+
+  const targetBuckets = ['blog-images', 'blog_images', 'images', 'public'];
+
+  for (const bucketName of targetBuckets) {
+    try {
+      const { data, error } = await supabase.storage
+        .from(bucketName)
+        .upload(fileName, file, {
+          contentType: file.type || 'image/jpeg',
+          upsert: true,
+        });
+
+      if (!error && data) {
+        const { data: publicUrlData } = supabase.storage
+          .from(bucketName)
+          .getPublicUrl(fileName);
+
+        if (publicUrlData?.publicUrl) {
+          console.log(`[uploadBlogImageToSupabase] Uploaded to bucket "${bucketName}":`, publicUrlData.publicUrl);
+          return publicUrlData.publicUrl;
+        }
+      }
+    } catch (e) {
+      console.warn(`[uploadBlogImageToSupabase] Failed upload to bucket "${bucketName}":`, e);
+    }
+  }
+
+  // Fallback to Base64 Data URL if storage bucket fails
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      resolve(reader.result as string);
+    };
+    reader.onerror = (err) => {
+      reject(err);
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 export interface SupabaseConversionJobRow {
