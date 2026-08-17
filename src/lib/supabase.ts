@@ -660,9 +660,11 @@ export async function fetchUserStitchOrders(
     let orderQuery = supabase
       .from('orders')
       .select('*')
-      .in('order_type', ['custom_kit_converter', 'custom_kit_assisted', 'custom_stitched']);
+      .neq('order_type', 'store');
 
-    if (userId) {
+    if (userId && userEmail && userId !== userEmail) {
+      orderQuery = orderQuery.or(`user_id.eq.${userId},user_id.eq.${userEmail}`);
+    } else if (userId) {
       orderQuery = orderQuery.eq('user_id', userId);
     } else if (userEmail) {
       orderQuery = orderQuery.eq('user_id', userEmail);
@@ -685,8 +687,9 @@ export async function fetchUserStitchOrders(
         if (row.order_type === 'custom_kit_converter') title = `Custom Kit (Converter) - ${details.size || 'Standard'}`;
         else if (row.order_type === 'custom_kit_assisted') title = `Assisted Kit - ${details.size || 'Standard'}`;
         else if (row.order_type === 'custom_stitched') title = `Custom Stitched Keepsake - ${details.size || 'Standard'}`;
+        else if (row.order_type) title = `${row.order_type.replace(/_/g, ' ')}`;
 
-        const rawStatus = row.fulfillment_status || 'pending_quote';
+        const rawStatus = row.fulfillment_status || row.status || 'pending_quote';
         let defaultNote = '';
         if (rawStatus === 'pending_quote' || rawStatus === 'received') {
           defaultNote = "Order received — we'll confirm final pricing and delivery charges in your dashboard within 24-48 hours.";
@@ -728,7 +731,7 @@ export async function fetchUserStitchOrders(
           admin_notes: quoteObj?.admin_notes || row.admin_notes || details.admin_notes || '',
           estimated_completion: row.estimated_completion || details.estimated_completion || '',
           tracking_number: row.tracking_number || details.tracking_number || '',
-          progress_percent: row.progress_percent ?? details.progress_percent,
+          progress_percent: row.progress_percent !== undefined ? row.progress_percent : details.progress_percent,
           progress_note: row.progress_note || details.progress_note || '',
           progress_updated_at: row.progress_updated_at || details.progress_updated_at || '',
           created_at: row.created_at,
@@ -750,7 +753,9 @@ export async function fetchUserStitchOrders(
       .from('stitch_orders')
       .select('*');
 
-    if (userId) {
+    if (userId && userEmail && userId !== userEmail) {
+      query = query.or(`user_id.eq.${userId},user_id.eq.${userEmail}`);
+    } else if (userId) {
       query = query.eq('user_id', userId);
     } else if (userEmail) {
       query = query.eq('user_id', userEmail);
@@ -762,7 +767,7 @@ export async function fetchUserStitchOrders(
 
     if (!error && data && Array.isArray(data)) {
       for (const item of data) {
-        if (!seenIds.has(String(item.id))) {
+        if (!seenIds.has(String(item.id)) && !seenIds.has(`order_${item.id}`)) {
           allResults.push({
             ...item,
             raw_order_id: item.id,
