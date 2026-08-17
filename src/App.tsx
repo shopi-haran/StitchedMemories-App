@@ -14,11 +14,12 @@ import { BlogPage } from './pages/BlogPage';
 import { ShopPage } from './pages/ShopPage';
 import { DashboardPage, DashboardTab } from './pages/DashboardPage';
 import { LoginPage } from './pages/LoginPage';
+import { AdminQuotesPage } from './pages/AdminQuotesPage';
 import { AuthModal } from './components/AuthModal';
 import { PaymentGatewayModal } from './components/PaymentGatewayModal';
 import { useAuth } from './context/AuthContext';
 
-export type PageName = 'home' | 'about-contact' | 'blog' | 'shop' | 'dashboard' | 'login';
+export type PageName = 'home' | 'about-contact' | 'blog' | 'shop' | 'dashboard' | 'login' | 'admin-quotes';
 
 export default function App() {
   const { user, isLoggedIn, isLoading, signOut: authSignOut, refreshProfile } = useAuth();

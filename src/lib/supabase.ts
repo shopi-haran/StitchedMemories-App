@@ -606,15 +606,23 @@ export async function createOrderRequest(params: CreateOrderRequestParams): Prom
 
 export interface SupabaseStitchOrderRow {
   id: string | number;
+  raw_order_id?: string | number;
   user_id: string;
   title?: string;
+  title_name?: string;
   image_url?: string;
-  status: string; // 'received' | 'in_progress' | 'quality_check' | 'shipped' | 'delivered' | 'pending_quote'
+  status: string; // 'pending_quote' | 'quoted' | 'awaiting_payment' | 'confirmed' | 'in_progress' | 'quality_check' | 'shipped' | 'delivered'
+  fulfillment_status?: string;
+  payment_status?: string;
+  quoted_price?: number;
+  total_amount?: number;
   status_note?: string;
   estimated_completion?: string;
+  tracking_number?: string;
   created_at?: string;
   order_type?: string;
   request_details?: any;
+  items?: any;
   [key: string]: any;
 }
 
@@ -652,15 +660,40 @@ export async function fetchUserStitchOrders(
         else if (row.order_type === 'custom_kit_assisted') title = `Assisted Kit - ${details.size || 'Standard'}`;
         else if (row.order_type === 'custom_stitched') title = `Custom Stitched Keepsake - ${details.size || 'Standard'}`;
 
+        const rawStatus = row.fulfillment_status || 'pending_quote';
+        let defaultNote = '';
+        if (rawStatus === 'pending_quote' || rawStatus === 'received') {
+          defaultNote = "Order received — we'll confirm final pricing and delivery charges in your dashboard within 24-48 hours.";
+        } else if (rawStatus === 'quoted') {
+          defaultNote = "Your custom quote is ready! Review the quote details and click Confirm Order to proceed.";
+        } else if (rawStatus === 'awaiting_payment') {
+          defaultNote = "Quote confirmed. Awaiting payment processing before crafting begins.";
+        } else if (rawStatus === 'confirmed') {
+          defaultNote = "Payment confirmed. Your project has entered our artisan workshop queue.";
+        } else if (rawStatus === 'in_progress') {
+          defaultNote = "Artisan stitching and material preparation is actively in progress.";
+        } else if (rawStatus === 'quality_check') {
+          defaultNote = "Undergoing master embroiderer tensioning, mounting & final quality inspection.";
+        } else if (rawStatus === 'shipped') {
+          defaultNote = row.tracking_number ? `Order dispatched with tracking: ${row.tracking_number}` : "Order dispatched with tracking.";
+        } else if (rawStatus === 'delivered') {
+          defaultNote = "Order delivered to your destination. Thank you for stitching with us!";
+        }
+
         const mapped: SupabaseStitchOrderRow = {
           id: `order_${row.id}`,
+          raw_order_id: row.id,
           user_id: row.user_id,
           title: title,
-          image_url: details.photo_url || details.pattern_result_url || '',
-          status: row.fulfillment_status || 'pending_quote',
-          status_note: row.fulfillment_status === 'pending_quote' 
-            ? "Order received — we'll confirm final pricing and delivery charges in your dashboard within 24-48 hours."
-            : 'Studio team is reviewing your project details.',
+          image_url: details.photo_url || details.pattern_result_url || row.image_url || '',
+          status: rawStatus,
+          fulfillment_status: rawStatus,
+          payment_status: row.payment_status || details.payment_status || 'pending_quote',
+          quoted_price: row.quoted_price ?? details.quoted_price ?? (row.total_amount > 0 ? row.total_amount : undefined),
+          total_amount: row.total_amount ?? row.quoted_price ?? 0,
+          status_note: row.status_note || details.status_note || defaultNote,
+          estimated_completion: row.estimated_completion || details.estimated_completion || '',
+          tracking_number: row.tracking_number || details.tracking_number || '',
           created_at: row.created_at,
           order_type: row.order_type,
           request_details: details,
@@ -692,7 +725,11 @@ export async function fetchUserStitchOrders(
     if (!error && data && Array.isArray(data)) {
       for (const item of data) {
         if (!seenIds.has(String(item.id))) {
-          allResults.push(item);
+          allResults.push({
+            ...item,
+            raw_order_id: item.id,
+            fulfillment_status: item.status || 'received',
+          });
         }
       }
     }
@@ -708,6 +745,176 @@ export async function fetchUserStitchOrders(
   });
 
   return allResults;
+}
+
+export async function fetchAllAdminOrders(): Promise<SupabaseStitchOrderRow[]> {
+  const allResults: SupabaseStitchOrderRow[] = [];
+  const seenIds = new Set<string>();
+
+  try {
+    const { data: orderRows, error: orderErr } = await supabase
+      .from('orders')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (!orderErr && orderRows && Array.isArray(orderRows)) {
+      for (const row of orderRows) {
+        const details = typeof row.request_details === 'string'
+          ? (() => { try { return JSON.parse(row.request_details); } catch { return {}; } })()
+          : row.request_details || {};
+
+        let title = 'Custom Quote Request';
+        if (row.order_type === 'custom_kit_converter') title = `Custom Kit (Converter) - ${details.size || 'Standard'}`;
+        else if (row.order_type === 'custom_kit_assisted') title = `Assisted Kit - ${details.size || 'Standard'}`;
+        else if (row.order_type === 'custom_stitched') title = `Custom Stitched Keepsake - ${details.size || 'Standard'}`;
+        else if (row.order_type) title = `${row.order_type.replace(/_/g, ' ')}`;
+
+        const rawStatus = row.fulfillment_status || 'pending_quote';
+
+        const mapped: SupabaseStitchOrderRow = {
+          id: `order_${row.id}`,
+          raw_order_id: row.id,
+          user_id: row.user_id,
+          title: title,
+          image_url: details.photo_url || details.pattern_result_url || row.image_url || '',
+          status: rawStatus,
+          fulfillment_status: rawStatus,
+          payment_status: row.payment_status || details.payment_status || 'pending_quote',
+          quoted_price: row.quoted_price ?? details.quoted_price ?? (row.total_amount > 0 ? row.total_amount : undefined),
+          total_amount: row.total_amount ?? row.quoted_price ?? 0,
+          status_note: row.status_note || details.status_note || '',
+          estimated_completion: row.estimated_completion || details.estimated_completion || '',
+          tracking_number: row.tracking_number || details.tracking_number || '',
+          created_at: row.created_at,
+          order_type: row.order_type,
+          request_details: details,
+          items: row.items,
+        };
+        seenIds.add(String(mapped.id));
+        allResults.push(mapped);
+      }
+    }
+  } catch (err) {
+    console.error('Error fetching all admin orders:', err);
+  }
+
+  // Also query stitch_orders table
+  try {
+    const { data: stitchRows, error: stitchErr } = await supabase
+      .from('stitch_orders')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (!stitchErr && stitchRows && Array.isArray(stitchRows)) {
+      for (const item of stitchRows) {
+        if (!seenIds.has(String(item.id)) && !seenIds.has(`order_${item.id}`)) {
+          allResults.push({
+            ...item,
+            raw_order_id: item.id,
+            fulfillment_status: item.status || 'received',
+          });
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Error fetching admin stitch_orders:', err);
+  }
+
+  allResults.sort((a, b) => {
+    const timeA = new Date(a.created_at || 0).getTime();
+    const timeB = new Date(b.created_at || 0).getTime();
+    return timeB - timeA;
+  });
+
+  return allResults;
+}
+
+export async function updateAdminOrderStatus(
+  orderId: string | number,
+  updates: {
+    fulfillment_status?: string;
+    payment_status?: string;
+    quoted_price?: number;
+    total_amount?: number;
+    status_note?: string;
+    estimated_completion?: string;
+    tracking_number?: string;
+  }
+): Promise<{ success: boolean; error?: any }> {
+  try {
+    const rawId = typeof orderId === 'string' && orderId.startsWith('order_')
+      ? orderId.replace('order_', '')
+      : orderId;
+
+    // 1. Update in orders table
+    const orderPayload: Record<string, any> = {};
+    if (updates.fulfillment_status) orderPayload.fulfillment_status = updates.fulfillment_status;
+    if (updates.payment_status) orderPayload.payment_status = updates.payment_status;
+    if (updates.quoted_price !== undefined) {
+      orderPayload.quoted_price = updates.quoted_price;
+      orderPayload.total_amount = updates.quoted_price;
+    }
+    if (updates.total_amount !== undefined) orderPayload.total_amount = updates.total_amount;
+    if (updates.status_note !== undefined) orderPayload.status_note = updates.status_note;
+    if (updates.estimated_completion !== undefined) orderPayload.estimated_completion = updates.estimated_completion;
+    if (updates.tracking_number !== undefined) orderPayload.tracking_number = updates.tracking_number;
+
+    const { error: orderError } = await supabase
+      .from('orders')
+      .update(orderPayload)
+      .eq('id', rawId);
+
+    if (orderError) {
+      console.warn('[updateAdminOrderStatus] orders update note:', orderError);
+    }
+
+    // 2. Also mirror update in stitch_orders if row exists
+    try {
+      const stitchPayload: Record<string, any> = {};
+      if (updates.fulfillment_status) stitchPayload.status = updates.fulfillment_status;
+      if (updates.status_note) stitchPayload.status_note = updates.status_note;
+      if (updates.estimated_completion) stitchPayload.estimated_completion = updates.estimated_completion;
+
+      await supabase
+        .from('stitch_orders')
+        .update(stitchPayload)
+        .eq('id', rawId);
+    } catch (e) {
+      console.warn('[updateAdminOrderStatus] stitch_orders mirror error:', e);
+    }
+
+    // Trigger local events
+    try {
+      window.dispatchEvent(new CustomEvent('orderUpdated', { detail: { orderId, updates } }));
+    } catch {}
+
+    return { success: true };
+  } catch (err: any) {
+    console.error('[updateAdminOrderStatus] Exception:', err);
+    return { success: false, error: err };
+  }
+}
+
+/**
+ * Customer confirms quote -> Moves fulfillment_status to 'awaiting_payment'
+ */
+export async function acceptCustomerQuote(orderId: string | number): Promise<{ success: boolean; error?: any }> {
+  return updateAdminOrderStatus(orderId, {
+    fulfillment_status: 'awaiting_payment',
+    payment_status: 'awaiting_payment',
+    status_note: 'Quote confirmed by customer. Awaiting payment confirmation before crafting begins.',
+  });
+}
+
+/**
+ * Manual test action for admin to mark an order as paid -> Moves fulfillment_status to 'confirmed'
+ */
+export async function markOrderAsPaidTest(orderId: string | number): Promise<{ success: boolean; error?: any }> {
+  return updateAdminOrderStatus(orderId, {
+    fulfillment_status: 'confirmed',
+    payment_status: 'paid',
+    status_note: 'Payment received (Test Mode). Order confirmed and queued for production.',
+  });
 }
 
 export async function createCustomStitchOrder(params: {
@@ -1090,19 +1297,10 @@ export async function fetchUserProfile(userId?: string, userEmail?: string): Pro
 
   if (!profile) {
     profile = { 
-      email: userEmail || 'info.nxuswave@gmail.com', 
-      display_name: normalizedEmail.includes('nxuswave') ? 'NxusWave User' : (userEmail ? userEmail.split('@')[0] : 'Crafter'),
-      subscription_tier: normalizedEmail === 'info.nxuswave@gmail.com' ? 'studio' : 'free'
+      email: userEmail || '', 
+      display_name: userEmail ? userEmail.split('@')[0] : 'Crafter',
+      subscription_tier: 'free'
     };
-  }
-
-  // Force info.nxuswave@gmail.com to Studio Tier
-  if (normalizedEmail === 'info.nxuswave@gmail.com') {
-    profile.subscription_tier = 'studio';
-    try {
-      localStorage.setItem('user_tier_info.nxuswave@gmail.com', 'studio');
-      localStorage.setItem('user_tier_global', 'studio');
-    } catch {}
   }
 
   return profile;

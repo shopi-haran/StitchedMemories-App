@@ -50,36 +50,11 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
   useEffect(() => {
     let active = true;
     const syncUserTier = async () => {
-      let targetTier: 'free' | 'pro' | 'studio' | null = null;
+      let targetTier: 'free' | 'pro' | 'studio' = 'free';
 
-      // 1. Check local storage overrides first
-      try {
-        const globalOverride = localStorage.getItem('user_tier_global');
-        if (globalOverride === 'free' || globalOverride === 'pro' || globalOverride === 'studio') {
-          targetTier = globalOverride;
-        }
-
-        if (!targetTier && effectiveUser?.email) {
-          const userOverride = localStorage.getItem(`user_tier_${effectiveUser.email.toLowerCase()}`);
-          if (userOverride === 'free' || userOverride === 'pro' || userOverride === 'studio') {
-            targetTier = userOverride;
-          }
-        }
-
-        if (!targetTier) {
-          const defaultOverride = localStorage.getItem('user_tier_info.nxuswave@gmail.com');
-          if (defaultOverride === 'free' || defaultOverride === 'pro' || defaultOverride === 'studio') {
-            targetTier = defaultOverride;
-          }
-        }
-      } catch {}
-
-      // 2. Fetch from Supabase profile if no local override found
-      if (!targetTier) {
+      if (effectiveUser?.id || effectiveUser?.email) {
         try {
-          const emailToUse = effectiveUser?.email || 'info.nxuswave@gmail.com';
-          const idToUse = effectiveUser?.id || emailToUse;
-          const profile = await fetchUserProfile(idToUse, emailToUse);
+          const profile = await fetchUserProfile(effectiveUser.id, effectiveUser.email);
           const rawTier = (profile?.subscription_tier || '').toLowerCase();
           if (rawTier.includes('studio')) {
             targetTier = 'studio';
@@ -94,7 +69,7 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
         }
       }
 
-      if (active && targetTier) {
+      if (active) {
         setUserTier(targetTier);
         setPlanTier(targetTier);
       }
