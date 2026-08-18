@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Session, User } from '@supabase/supabase-js';
-import { supabase, fetchUserProfile, migrateGuestConversionJobs } from '../lib/supabase';
+import { supabase, fetchUserProfile } from '../lib/supabase';
 
 export interface UserProfile {
   id: string;
@@ -42,11 +42,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (sess?.user) {
       setSession(sess);
       setRawUser(sess.user);
-
-      // Migrate any guest patterns to user account
-      migrateGuestConversionJobs(sess.user.id).catch((err) => {
-        console.error('[AuthContext] Error migrating guest jobs:', err);
-      });
 
       try {
         const profile = await fetchUserProfile(sess.user.id, sess.user.email);
@@ -199,7 +194,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signOut = async () => {
     try {
+      // Clear app-related localStorage items to prevent state leakage between accounts
+      try {
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && (
+            key.startsWith('stitchly_') ||
+            key.startsWith('user_pattern_') ||
+            key.startsWith('cached_') ||
+            key.startsWith('dmc_') ||
+            key.includes('conversion_jobs')
+          )) {
+            keysToRemove.push(key);
+          }
+        }
+        keysToRemove.forEach((k) => localStorage.removeItem(k));
+      } catch (e) {
+        console.warn('[AuthContext] Error cleaning localStorage on sign out:', e);
+      }
+
       await supabase.auth.signOut();
+      setSession(null);
+      setUser(null);
+      setRawUser(null);
     } catch (err) {
       console.error('[AuthContext] signOut error:', err);
     }

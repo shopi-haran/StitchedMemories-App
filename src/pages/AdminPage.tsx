@@ -796,27 +796,27 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                                   </div>
                                 )}
 
-                                {details.delivery_address && (
+                                {(details.delivery_address || details.address) && (
                                   <div className="col-span-2 bg-white p-3 rounded-lg border border-[#1D231E]/10">
                                     <span className="text-[#1D231E]/50 block text-[11px] font-medium flex items-center gap-1">
                                       <MapPin className="w-3 h-3" /> Shipping Destination
                                     </span>
                                     <span className="font-semibold text-[#1D231E] block mt-0.5 truncate">
-                                      {details.delivery_address}
-                                      {details.delivery_phone ? ` (Tel: ${details.delivery_phone})` : ''}
+                                      {details.delivery_address || details.address}
+                                      {(details.phone || details.delivery_phone) ? ` (Tel: ${details.phone || details.delivery_phone})` : ''}
                                     </span>
                                   </div>
                                 )}
                               </div>
 
                               {/* Customer Special Notes */}
-                              {(details.instructions || details.notes || details.special_instructions) && (
+                              {(details.customer_notes || details.instructions || details.notes || details.special_instructions) && (
                                 <div className="p-3 bg-amber-50/60 rounded-xl border border-amber-200/70 text-xs text-amber-900 mb-2">
                                   <span className="font-bold flex items-center gap-1 mb-0.5">
                                     <MessageSquare className="w-3.5 h-3.5 text-amber-700" /> Customer Instructions:
                                   </span>
                                   <p className="text-amber-800 italic">
-                                    "{details.instructions || details.notes || details.special_instructions}"
+                                    "{details.customer_notes || details.instructions || details.notes || details.special_instructions}"
                                   </p>
                                 </div>
                               )}
@@ -943,6 +943,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                           <tr className="bg-[#FAF6EE] border-b border-[#1D231E]/10 text-[#1D231E]/70 font-semibold uppercase tracking-wider text-[11px]">
                             <th className="py-3.5 px-4">Order ID & Date</th>
                             <th className="py-3.5 px-4">Customer</th>
+                            <th className="py-3.5 px-4">Contact & Destination</th>
                             <th className="py-3.5 px-4">Type & Details</th>
                             <th className="py-3.5 px-4">Status & Stage</th>
                             <th className="py-3.5 px-4">Price / Quote</th>
@@ -953,6 +954,9 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                           {filteredAllOrders.map((order) => {
                             const details = order.request_details || {};
                             const totalAmount = order.total_amount ?? order.quoted_price ?? 0;
+                            const deliveryAddress = details.delivery_address || details.address;
+                            const customerPhone = details.phone || details.delivery_phone || details.customer_phone;
+                            const customerNotes = details.customer_notes || details.instructions || details.notes || details.special_instructions;
 
                             return (
                               <tr
@@ -985,6 +989,29 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                                   <span className="text-[11px] text-[#1D231E]/60 block truncate max-w-[170px] mt-0.5">
                                     {order.customer_email || order.user_id}
                                   </span>
+                                </td>
+
+                                <td className="py-4 px-4 align-top max-w-[200px]">
+                                  {deliveryAddress ? (
+                                    <div className="text-[11px] text-[#1D231E] space-y-0.5">
+                                      <p className="font-medium flex items-start gap-1">
+                                        <MapPin className="w-3 h-3 text-[#1D231E]/50 shrink-0 mt-0.5" />
+                                        <span className="line-clamp-2">{deliveryAddress}</span>
+                                      </p>
+                                      {customerPhone && (
+                                        <p className="text-[10px] text-[#1D231E]/60 pl-4 font-mono">
+                                          Tel: {customerPhone}
+                                        </p>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <span className="text-[#1D231E]/40 italic text-[11px]">No address</span>
+                                  )}
+                                  {customerNotes && (
+                                    <div className="mt-1.5 p-1.5 bg-amber-50 rounded border border-amber-200/60 text-[10px] text-amber-900 line-clamp-2">
+                                      <span className="font-bold">Note:</span> "{customerNotes}"
+                                    </div>
+                                  )}
                                 </td>
 
                                 <td className="py-4 px-4 align-top max-w-[220px]">
@@ -1436,6 +1463,69 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                 <X className="w-4 h-4" />
               </button>
             </div>
+
+            {/* Customer & Order Details Summary */}
+            {(() => {
+              const editDetails = selectedOrderForEdit.request_details || {};
+              const editAddress = editDetails.delivery_address || editDetails.address;
+              const editPhone = editDetails.phone || editDetails.delivery_phone || editDetails.customer_phone;
+              const editNotes = editDetails.customer_notes || editDetails.instructions || editDetails.notes || editDetails.special_instructions;
+
+              return (
+                <div className="bg-[#FAF6EE] p-4 rounded-2xl border border-[#1D231E]/10 mb-5 text-xs space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-[#1D231E] uppercase tracking-wider text-[10px]">
+                      Customer & Shipping Details
+                    </span>
+                    {renderTierBadge(selectedOrderForEdit.customer_tier)}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="bg-white p-3 rounded-xl border border-[#1D231E]/10">
+                      <span className="text-[#1D231E]/50 block text-[10px] font-semibold uppercase">Customer</span>
+                      <p className="font-semibold text-[#1D231E] mt-0.5">
+                        {selectedOrderForEdit.customer_name || editDetails.customer_name || 'Customer'}
+                      </p>
+                      <p className="text-[11px] text-[#1D231E]/60 truncate">
+                        {selectedOrderForEdit.customer_email || editDetails.customer_email || selectedOrderForEdit.user_id}
+                      </p>
+                      {editPhone && (
+                        <p className="text-[11px] text-[#1D231E]/70 font-mono mt-1">
+                          Tel: {editPhone}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="bg-white p-3 rounded-xl border border-[#1D231E]/10">
+                      <span className="text-[#1D231E]/50 block text-[10px] font-semibold uppercase flex items-center gap-1">
+                        <MapPin className="w-3 h-3 text-[#1D231E]/40" /> Destination
+                      </span>
+                      {editAddress ? (
+                        <p className="font-semibold text-[#1D231E] mt-0.5 text-[11px]">
+                          {editAddress}
+                        </p>
+                      ) : (
+                        <p className="text-[#1D231E]/40 italic text-[11px] mt-0.5">No shipping address recorded</p>
+                      )}
+                      {editDetails.size && (
+                        <p className="text-[10px] text-[#1D231E]/60 mt-1">
+                          Specs: {editDetails.size} {editDetails.framing_option ? `• ${editDetails.framing_option}` : ''}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {editNotes && (
+                    <div className="p-2.5 bg-amber-50 rounded-xl border border-amber-200 text-amber-950">
+                      <span className="font-bold flex items-center gap-1 text-[11px] text-amber-800">
+                        <MessageSquare className="w-3 h-3 text-amber-700" /> Customer Instructions:
+                      </span>
+                      <p className="italic text-[11px] mt-0.5 text-amber-900">"{editNotes}"</p>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             <form onSubmit={handleSaveOrderEdit} className="space-y-5">
               {/* Stage Selection Buttons & Dropdown */}

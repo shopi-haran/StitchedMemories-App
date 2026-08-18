@@ -410,17 +410,11 @@ export async function saveUserConversionJob(jobData: {
     status: jobData.status,
     grid: `${jobData.grid_width}x${jobData.grid_height}`,
     colors_count: jobData.colors_count,
-    hasPhotoUrl: !!jobData.photo_url,
-    hasThumbUrl: !!jobData.thumbnail_url,
-    hasOriginalUrl: !!jobData.original_image_url,
-    hasPdfUrl: !!jobData.pattern_pdf_url,
-    hasPreviewUrl: !!jobData.pattern_preview_url,
-    photo_url_snippet: jobData.photo_url ? jobData.photo_url.substring(0, 80) : '',
-    pdf_url_snippet: jobData.pattern_pdf_url ? jobData.pattern_pdf_url.substring(0, 80) : '',
   });
 
-  if (!jobData.user_id) {
-    console.warn('[saveUserConversionJob] Missing user_id, aborting save');
+  // Guest users conversions should not be saved; only logged-in users' conversions get saved directly to Supabase
+  if (!jobData.user_id || jobData.user_id === 'guest') {
+    console.log('[saveUserConversionJob] Guest user session - conversion not saved to account.');
     return false;
   }
 
@@ -459,35 +453,24 @@ export async function saveUserConversionJob(jobData: {
   const finalThumb = compactThumbnail || mediumPhoto;
   const finalPhoto = mediumPhoto || finalThumb;
 
-  // Cache thumbnail & photo in localStorage under multiple key conventions for immediate synchronous access
-  if (finalThumb) {
-    try {
-      localStorage.setItem(`user_pattern_img_${jobData.user_id}_${jobData.title}`, finalThumb);
-      localStorage.setItem(`user_pattern_img_${jobData.title}`, finalThumb);
-      localStorage.setItem(`user_pattern_thumb_${jobData.title}`, finalThumb);
-    } catch (e) {
-      console.warn('[saveUserConversionJob] LocalStorage quota for thumbnail cache:', e);
-    }
+  // Retrieve current active Supabase Auth session right before insert
+  const { data: { session } } = await supabase.auth.getSession();
+  const effectiveUserId = session?.user?.id || (jobData.user_id !== 'guest' ? jobData.user_id : null);
+
+  if (!effectiveUserId) {
+    console.warn('[saveUserConversionJob] No active user ID found, skipping Supabase save.');
+    return false;
   }
 
-  if (finalPhoto) {
-    try {
-      localStorage.setItem(`user_pattern_photo_${jobData.title}`, finalPhoto);
-    } catch (e) {
-      console.warn('[saveUserConversionJob] LocalStorage quota for photo cache:', e);
-    }
-  }
-
-  const newLocalJob: SupabaseConversionJobRow = {
-    id: `job_${Date.now()}`,
-    user_id: jobData.user_id,
+  const insertPayload = {
+    user_id: effectiveUserId,
     title: jobData.title || 'Converted Pattern',
     status: jobData.status || 'complete',
     grid_width: jobData.grid_width || 60,
     grid_height: jobData.grid_height || 60,
     colors_count: jobData.colors_count || 18,
     photo_url: finalPhoto.length < 250000 ? finalPhoto : '',
-    thumbnail_url: finalThumb.length < 100000 ? finalThumb : '',
+    thumbnail_url: jobData.thumbnail_url || (finalThumb.length < 100000 ? finalThumb : ''),
     original_image_url: jobData.original_image_url || '',
     pattern_pdf_url: jobData.pattern_pdf_url || '',
     pattern_preview_url: jobData.pattern_preview_url || '',
@@ -495,71 +478,26 @@ export async function saveUserConversionJob(jobData: {
     created_at: new Date().toISOString(),
   };
 
-  // Persist locally to localStorage array
+  console.log('[saveUserConversionJob] Executing Supabase insert for conversion_jobs:', insertPayload);
+
+  // Persist directly to Supabase conversion_jobs table
   try {
-    const raw = localStorage.getItem('stitchly_local_conversion_jobs');
-    let list: SupabaseConversionJobRow[] = raw ? JSON.parse(raw) : [];
-    // Remove duplicate entry with same title if present
-    list = list.filter(j => j.title !== newLocalJob.title);
-    list.unshift(newLocalJob);
-    localStorage.setItem('stitchly_local_conversion_jobs', JSON.stringify(list.slice(0, 50)));
-    console.log('[saveUserConversionJob] Saved job to local storage array cache');
-  } catch (e) {
-    console.error('[saveUserConversionJob] Failed to update local conversion jobs list:', e);
-  }
+    const { data, error } = await supabase.from('conversion_jobs').insert([insertPayload]).select();
 
-  // Retrieve current active Supabase Auth session right before insert
-  const { data: { session } } = await supabase.auth.getSession();
-  console.log('[saveUserConversionJob] Supabase Auth Session before insert:', {
-    hasSession: !!session,
-    sessionUserId: session?.user?.id,
-    sessionUserEmail: session?.user?.email,
-    payloadUserId: jobData.user_id,
-    hasAccessToken: !!session?.access_token,
-    accessTokenSnippet: session?.access_token ? `${session.access_token.substring(0, 20)}...` : null,
-  });
-
-  // Align insert user_id with session.user.id when an active session exists so RLS (auth.uid() = user_id) passes
-  const effectiveUserId = session?.user?.id || (jobData.user_id !== 'guest' ? jobData.user_id : null);
-
-  if (effectiveUserId) {
-    const insertPayload = {
-      user_id: effectiveUserId,
-      title: jobData.title || 'Converted Pattern',
-      status: jobData.status || 'complete',
-      grid_width: jobData.grid_width || 60,
-      grid_height: jobData.grid_height || 60,
-      colors_count: jobData.colors_count || 18,
-      photo_url: finalPhoto.length < 250000 ? finalPhoto : '',
-      thumbnail_url: jobData.thumbnail_url || (finalThumb.length < 100000 ? finalThumb : ''),
-      original_image_url: jobData.original_image_url || '',
-      pattern_pdf_url: jobData.pattern_pdf_url || '',
-      pattern_preview_url: jobData.pattern_preview_url || '',
-      pattern_config: jobData.pattern_config || null,
-      created_at: new Date().toISOString(),
-    };
-
-    console.log('[saveUserConversionJob] Executing Supabase insert for conversion_jobs:', insertPayload);
-
-    // Persist to Supabase database
-    try {
-      const { data, error } = await supabase.from('conversion_jobs').insert([insertPayload]).select();
-
-      if (error) {
-        console.error('[saveUserConversionJob] Supabase insert error for conversion_jobs:', {
-          code: error.code,
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-        });
-      } else {
-        console.log('[saveUserConversionJob] Supabase insert succeeded for conversion_jobs:', data);
-      }
-    } catch (err) {
-      console.error('[saveUserConversionJob] Supabase insert exception:', err);
+    if (error) {
+      console.error('[saveUserConversionJob] Supabase insert error for conversion_jobs:', {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+      });
+      return false;
+    } else {
+      console.log('[saveUserConversionJob] Supabase insert succeeded for conversion_jobs:', data);
     }
-  } else {
-    console.log('[saveUserConversionJob] Guest user session - saved job to local storage cache only.');
+  } catch (err) {
+    console.error('[saveUserConversionJob] Supabase insert exception:', err);
+    return false;
   }
 
   try {
@@ -569,60 +507,9 @@ export async function saveUserConversionJob(jobData: {
   return true;
 }
 
-export async function migrateGuestConversionJobs(userId: string): Promise<void> {
-  if (!userId) return;
-  try {
-    const raw = localStorage.getItem('stitchly_local_conversion_jobs');
-    if (!raw) return;
-    let list: SupabaseConversionJobRow[] = JSON.parse(raw);
-    if (!Array.isArray(list) || list.length === 0) return;
-
-    let hasChanges = false;
-    const jobsToUpload: SupabaseConversionJobRow[] = [];
-
-    list = list.map((job) => {
-      if (job.user_id === 'guest' || !job.user_id) {
-        hasChanges = true;
-        const updated = { ...job, user_id: userId };
-        jobsToUpload.push(updated);
-        return updated;
-      }
-      return job;
-    });
-
-    if (hasChanges) {
-      localStorage.setItem('stitchly_local_conversion_jobs', JSON.stringify(list));
-      console.log(`[migrateGuestConversionJobs] Migrated ${jobsToUpload.length} guest jobs to user ${userId}`);
-
-      for (const job of jobsToUpload) {
-        try {
-          await supabase.from('conversion_jobs').upsert([
-            {
-              user_id: userId,
-              title: job.title || 'Converted Pattern',
-              status: job.status || 'complete',
-              grid_width: job.grid_width || 60,
-              grid_height: job.grid_height || 60,
-              colors_count: job.colors_count || 18,
-              photo_url: job.photo_url || '',
-              thumbnail_url: job.thumbnail_url || '',
-              original_image_url: job.original_image_url || '',
-              pattern_pdf_url: job.pattern_pdf_url || '',
-              pattern_preview_url: job.pattern_preview_url || '',
-              pattern_config: job.pattern_config || null,
-              created_at: job.created_at || new Date().toISOString(),
-            },
-          ]);
-        } catch (e) {
-          console.error('[migrateGuestConversionJobs] Supabase sync error:', e);
-        }
-      }
-
-      window.dispatchEvent(new CustomEvent('patternSaved'));
-    }
-  } catch (e) {
-    console.error('[migrateGuestConversionJobs] Error migrating guest jobs:', e);
-  }
+export async function migrateGuestConversionJobs(_userId: string): Promise<void> {
+  // Deprecated: Guest conversions are no longer cached or reassigned across sessions.
+  return;
 }
 
 export interface OrderItem {
@@ -864,16 +751,14 @@ export async function fetchUserStitchOrders(
   const allResults: SupabaseStitchOrderRow[] = [];
   const seenIds = new Set<string>();
 
-  // 1. Fetch from custom requests in orders table
+  // Fetch from custom requests in orders table
   try {
     let orderQuery = supabase
       .from('orders')
       .select('*')
       .neq('order_type', 'store');
 
-    if (userId && userEmail && userId !== userEmail) {
-      orderQuery = orderQuery.or(`user_id.eq.${userId},user_id.eq.${userEmail}`);
-    } else if (userId) {
+    if (userId) {
       orderQuery = orderQuery.eq('user_id', userId);
     } else if (userEmail) {
       orderQuery = orderQuery.eq('user_id', userEmail);
@@ -958,39 +843,6 @@ export async function fetchUserStitchOrders(
     } else {
       console.warn('[fetchUserStitchOrders] Notice fetching custom orders from orders table:', err?.message || err);
     }
-  }
-
-  // 2. Fetch from stitch_orders table
-  try {
-    let query = supabase
-      .from('stitch_orders')
-      .select('*');
-
-    if (userId && userEmail && userId !== userEmail) {
-      query = query.or(`user_id.eq.${userId},user_id.eq.${userEmail}`);
-    } else if (userId) {
-      query = query.eq('user_id', userId);
-    } else if (userEmail) {
-      query = query.eq('user_id', userEmail);
-    }
-
-    query = query.order('created_at', { ascending: false });
-
-    const { data, error } = await query;
-
-    if (!error && data && Array.isArray(data)) {
-      for (const item of data) {
-        if (!seenIds.has(String(item.id)) && !seenIds.has(`order_${item.id}`)) {
-          allResults.push({
-            ...item,
-            raw_order_id: item.id,
-            fulfillment_status: item.status || 'received',
-          });
-        }
-      }
-    }
-  } catch (err: any) {
-    console.warn('[fetchUserStitchOrders] Notice fetching stitch_orders:', err?.message || err);
   }
 
   // Sort newest first
@@ -1200,20 +1052,8 @@ export async function submitAdminQuote(
       .eq('id', rawId);
 
     if (orderError) {
-      console.warn('[submitAdminQuote] orders update note:', orderError);
-    }
-
-    // Mirror to stitch_orders if row exists
-    try {
-      await supabase
-        .from('stitch_orders')
-        .update({
-          status: 'quoted',
-          status_note: statusNoteText,
-        })
-        .eq('id', rawId);
-    } catch (e) {
-      console.warn('[submitAdminQuote] stitch_orders mirror error:', e);
+      console.error('[submitAdminQuote] Supabase orders update error:', orderError);
+      return { success: false, error: orderError };
     }
 
     // Trigger local events
@@ -1275,23 +1115,8 @@ export async function updateAdminOrderDetails(
       .eq('id', rawId);
 
     if (orderError) {
-      console.warn('[updateAdminOrderDetails] orders table update error:', orderError);
-    }
-
-    // Mirror to stitch_orders if row exists
-    try {
-      const stitchPayload: Record<string, any> = {};
-      if (updates.fulfillment_status) stitchPayload.status = updates.fulfillment_status;
-      if (updates.status_note) stitchPayload.status_note = updates.status_note;
-      if (updates.tracking_number) stitchPayload.tracking_number = updates.tracking_number;
-      if (updates.estimated_completion) stitchPayload.estimated_completion = updates.estimated_completion;
-
-      await supabase
-        .from('stitch_orders')
-        .update(stitchPayload)
-        .eq('id', rawId);
-    } catch (e) {
-      console.warn('[updateAdminOrderDetails] stitch_orders mirror error:', e);
+      console.error('[updateAdminOrderDetails] Supabase orders table update error:', orderError);
+      return { success: false, error: orderError };
     }
 
     // Trigger local events
