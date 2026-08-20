@@ -56,6 +56,10 @@ export const getStageIndex = (statusRaw?: string): number => {
   if (!statusRaw) return 0;
   const s = statusRaw.toLowerCase().trim();
 
+  // Stage 0: Pending Quote / Received (Explicit guard so pending_quote doesn't get matched by substring checks)
+  if (s === 'pending_quote' || s === 'received' || s === 'new' || s === 'pending') {
+    return 0;
+  }
   // Stage 6: Delivered
   if (s === 'delivered' || s.includes('deliver') || s.includes('complete') || s.includes('done')) {
     return 6;
@@ -76,11 +80,11 @@ export const getStageIndex = (statusRaw?: string): number => {
   if (s === 'confirmed' || s === 'paid' || s.includes('payment_received')) {
     return 2;
   }
-  // Stage 1: Quoted (Skip showing Awaiting Payment as separate visual step — remains at Quoted stage)
-  if (s === 'quoted' || s === 'awaiting_payment' || s.includes('quote') || s.includes('awaiting')) {
+  // Stage 1: Quoted (Only actual quote ready or awaiting payment)
+  if (s === 'quoted' || s === 'awaiting_payment' || s === 'quote_ready' || s.includes('awaiting')) {
     return 1;
   }
-  // Stage 0: Received (default for pending_quote, received, new)
+  // Stage 0: Received (fallback default)
   return 0;
 };
 
