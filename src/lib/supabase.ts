@@ -1225,7 +1225,6 @@ export async function requestQuoteRevision(
 
     const payload: Record<string, any> = {
       fulfillment_status: 'revision_requested',
-      status: 'revision_requested',
       customer_feedback: trimmedFeedback,
       quote_history: history,
       status_note: trimmedFeedback
@@ -1280,7 +1279,6 @@ export async function cancelCustomerOrder(
 
     const payload: Record<string, any> = {
       fulfillment_status: 'cancelled',
-      status: 'cancelled',
       status_note: reason || 'Order was cancelled by customer.',
       updated_at: new Date().toISOString(),
     };
