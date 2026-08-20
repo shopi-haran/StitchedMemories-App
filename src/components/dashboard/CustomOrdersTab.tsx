@@ -150,9 +150,7 @@ export const CustomOrdersTab: React.FC<CustomOrdersTabProps> = ({ user, onOpenCo
     try {
       const res = await requestQuoteRevision(
         targetId,
-        revisionText,
-        revisionModalOrder.quote,
-        revisionModalOrder.quote_history
+        revisionText
       );
       if (res.success) {
         setFeedbackMsg({
@@ -163,13 +161,18 @@ export const CustomOrdersTab: React.FC<CustomOrdersTabProps> = ({ user, onOpenCo
         setRevisionText('');
         await loadOrders(true);
       } else {
+        const errorMsg = res.message || res.error?.message || 'Unable to submit revision request. Please try again.';
         setFeedbackMsg({
-          text: 'Unable to submit revision request. Please try again.',
+          text: errorMsg,
           type: 'info',
         });
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error requesting revision:', err);
+      setFeedbackMsg({
+        text: err?.message || 'Unable to submit revision request. Please try again.',
+        type: 'info',
+      });
     } finally {
       setIsSubmittingRevision(false);
       setTimeout(() => setFeedbackMsg(null), 5000);
@@ -194,13 +197,18 @@ export const CustomOrdersTab: React.FC<CustomOrdersTabProps> = ({ user, onOpenCo
         setCancelModalOrder(null);
         await loadOrders(true);
       } else {
+        const errorMsg = res.message || res.error?.message || 'Unable to cancel order. Please try again.';
         setFeedbackMsg({
-          text: 'Unable to cancel order. Please try again.',
+          text: errorMsg,
           type: 'info',
         });
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error cancelling order:', err);
+      setFeedbackMsg({
+        text: err?.message || 'Unable to cancel order. Please try again.',
+        type: 'info',
+      });
     } finally {
       setIsSubmittingCancel(false);
       setTimeout(() => setFeedbackMsg(null), 5000);

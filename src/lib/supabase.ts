@@ -1195,57 +1195,35 @@ export async function acceptCustomerQuote(orderId: string | number): Promise<{ s
 }
 
 /**
- * Customer requests revision on quote:
- * - Moves current quote object into quote_history (appending it as an array entry with superseded_at timestamp and reason)
- * - Saves customer's message into customer_feedback
- * - Sets fulfillment_status = 'revision_requested' and status = 'revision_requested'
+ * Customer requests revision on quote via secure database function:
+ * - Calls supabase.rpc('request_quote_revision', { p_order_id, p_feedback })
+ * - The database function handles archiving quote_history, setting status, and updating feedback internally.
  */
 export async function requestQuoteRevision(
   orderId: string | number,
   feedback: string,
-  currentQuote?: AdminQuoteData,
-  existingHistory?: ArchivedQuote[]
-): Promise<{ success: boolean; data?: any; error?: any }> {
+  _currentQuote?: AdminQuoteData,
+  _existingHistory?: ArchivedQuote[]
+): Promise<{ success: boolean; data?: any; error?: any; message?: string }> {
   try {
     const rawId = typeof orderId === 'string' && orderId.startsWith('order_')
       ? orderId.replace('order_', '')
       : orderId;
 
     const trimmedFeedback = (feedback || '').trim();
-    const history: ArchivedQuote[] = Array.isArray(existingHistory) ? [...existingHistory] : [];
 
-    if (currentQuote && (currentQuote.line_items?.length || currentQuote.total_amount || currentQuote.item_price)) {
-      const archived: ArchivedQuote = {
-        ...currentQuote,
-        superseded_at: new Date().toISOString(),
-        reason: trimmedFeedback || 'Customer requested quote adjustment',
-      };
-      history.push(archived);
-    }
-
-    const payload: Record<string, any> = {
-      fulfillment_status: 'revision_requested',
-      customer_feedback: trimmedFeedback,
-      quote_history: history,
-      status_note: trimmedFeedback
-        ? `Revision requested: "${trimmedFeedback}"`
-        : 'Revision requested by customer. Studio is preparing an updated quotation.',
-      updated_at: new Date().toISOString(),
-    };
-
-    const { data, error } = await supabase
-      .from('orders')
-      .update(payload)
-      .eq('id', rawId)
-      .select();
+    const { data, error } = await supabase.rpc('request_quote_revision', {
+      p_order_id: rawId,
+      p_feedback: trimmedFeedback,
+    });
 
     if (error) {
-      console.error('[requestQuoteRevision] Supabase update error:', error);
-      // Fallback: update status via updateAdminOrderStatus
-      return await updateAdminOrderStatus(orderId, {
-        fulfillment_status: 'revision_requested',
-        status_note: `Revision requested: "${trimmedFeedback}"`,
-      });
+      console.error('[requestQuoteRevision] Supabase RPC error:', error);
+      return {
+        success: false,
+        error,
+        message: error.message || 'Unable to submit revision request. Please try again.',
+      };
     }
 
     try {
@@ -1259,42 +1237,40 @@ export async function requestQuoteRevision(
     return { success: true, data };
   } catch (err: any) {
     console.error('[requestQuoteRevision] Exception:', err);
-    return { success: false, error: err };
+    return {
+      success: false,
+      error: err,
+      message: err?.message || 'Unable to submit revision request. Please try again.',
+    };
   }
 }
 
 /**
- * Customer cancels order:
- * - Sets fulfillment_status = 'cancelled' and status = 'cancelled'
- * - This is final.
+ * Customer cancels order via secure database function:
+ * - Calls supabase.rpc('cancel_customer_order', { p_order_id, p_reason })
+ * - The database function validates order state, permissions, and updates status internally.
  */
 export async function cancelCustomerOrder(
   orderId: string | number,
   reason?: string
-): Promise<{ success: boolean; data?: any; error?: any }> {
+): Promise<{ success: boolean; data?: any; error?: any; message?: string }> {
   try {
     const rawId = typeof orderId === 'string' && orderId.startsWith('order_')
       ? orderId.replace('order_', '')
       : orderId;
 
-    const payload: Record<string, any> = {
-      fulfillment_status: 'cancelled',
-      status_note: reason || 'Order was cancelled by customer.',
-      updated_at: new Date().toISOString(),
-    };
-
-    const { data, error } = await supabase
-      .from('orders')
-      .update(payload)
-      .eq('id', rawId)
-      .select();
+    const { data, error } = await supabase.rpc('cancel_customer_order', {
+      p_order_id: rawId,
+      p_reason: reason || 'Cancelled by customer from dashboard',
+    });
 
     if (error) {
-      console.error('[cancelCustomerOrder] Supabase update error:', error);
-      return await updateAdminOrderStatus(orderId, {
-        fulfillment_status: 'cancelled',
-        status_note: reason || 'Order was cancelled by customer.',
-      });
+      console.error('[cancelCustomerOrder] Supabase RPC error:', error);
+      return {
+        success: false,
+        error,
+        message: error.message || 'Unable to cancel order. Please try again.',
+      };
     }
 
     try {
@@ -1308,7 +1284,11 @@ export async function cancelCustomerOrder(
     return { success: true, data };
   } catch (err: any) {
     console.error('[cancelCustomerOrder] Exception:', err);
-    return { success: false, error: err };
+    return {
+      success: false,
+      error: err,
+      message: err?.message || 'Unable to cancel order. Please try again.',
+    };
   }
 }
 
