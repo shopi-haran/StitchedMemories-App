@@ -109,6 +109,9 @@ export const CustomOrdersTab: React.FC<CustomOrdersTabProps> = ({ user, onOpenCo
   const [feedbackMsg, setFeedbackMsg] = useState<{ text: string; type: 'success' | 'info' } | null>(null);
   const [copiedTracking, setCopiedTracking] = useState<string | null>(null);
 
+  // Detail View Modal state
+  const [selectedDetailOrder, setSelectedDetailOrder] = useState<SupabaseStitchOrderRow | null>(null);
+
   // Quote Revision and Cancellation state
   const [revisionModalOrder, setRevisionModalOrder] = useState<SupabaseStitchOrderRow | null>(null);
   const [revisionText, setRevisionText] = useState<string>('');
@@ -116,6 +119,16 @@ export const CustomOrdersTab: React.FC<CustomOrdersTabProps> = ({ user, onOpenCo
   const [cancelModalOrder, setCancelModalOrder] = useState<SupabaseStitchOrderRow | null>(null);
   const [isSubmittingCancel, setIsSubmittingCancel] = useState<boolean>(false);
   const [expandedHistoryOrders, setExpandedHistoryOrders] = useState<Record<string, boolean>>({});
+
+  // Keep selectedDetailOrder in sync with refreshed orders
+  useEffect(() => {
+    if (selectedDetailOrder) {
+      const fresh = orders.find(
+        (o) => (o.raw_order_id || o.id) === (selectedDetailOrder.raw_order_id || selectedDetailOrder.id)
+      );
+      if (fresh) setSelectedDetailOrder(fresh);
+    }
+  }, [orders]);
 
   const toggleOrderHistory = (orderId: string | number) => {
     const key = String(orderId);
@@ -554,71 +567,55 @@ export const CustomOrdersTab: React.FC<CustomOrdersTabProps> = ({ user, onOpenCo
           </button>
         </div>
       ) : orders.length > 0 ? (
-        <div className="space-y-6">
+        <div className="space-y-5">
           {orders.map((order) => {
             const rawStatus = (order.fulfillment_status || order.status || 'pending_quote').toLowerCase();
             const currentStageIndex = getStageIndex(rawStatus);
             const orderTitle = order.title || order.title_name || `Custom Order #${order.id}`;
             const details = order.request_details || {};
-            const isQuotedState = rawStatus === 'quoted';
-            const isAwaitingPayment = rawStatus === 'awaiting_payment';
             
             // Check if custom stitched product
             const isCustomStitched = order.order_type === 'custom_stitched' || 
               (order.title && order.title.toLowerCase().includes('stitched')) ||
               (details.order_type === 'custom_stitched');
 
-            // Check if in production
-            const isInProduction = rawStatus === 'in_production' || 
-              rawStatus === 'in_progress' || 
-              currentStageIndex === 3;
+            const isPendingQuote = rawStatus === 'pending_quote' || rawStatus === 'received';
+            const isRevisionRequested = rawStatus === 'revision_requested';
+            const isCancelled = rawStatus === 'cancelled' || rawStatus === 'canceled';
 
-            // Check if shipped
-            const isShipped = rawStatus === 'shipped' || currentStageIndex === 5 || currentStageIndex === 6 || Boolean(order.tracking_number);
-
-            // Numerical progress percent (0 - 100)
-            const progressPercent = typeof order.progress_percent === 'number' 
-              ? Math.min(100, Math.max(0, order.progress_percent))
-              : order.progress_percent !== undefined
-              ? Math.min(100, Math.max(0, Number(order.progress_percent) || 0))
-              : 0;
-
-            const progressNote = order.progress_note || details.progress_note || (
-              progressPercent > 0 
-                ? `${progressPercent}% stitched — Studio hand embroidery actively underway.`
-                : 'Artisan hand stitching and fabric mounting in progress.'
-            );
+            const totalAmount = Number(order.quote?.total_amount) || Number(order.quoted_price) || Number(order.total_amount) || 0;
+            const hasQuotedAmount = !isPendingQuote && totalAmount > 0;
 
             return (
               <div
                 key={order.id}
-                className="bg-white border border-[#E8E1D2] hover:border-[#D5CDBC] rounded-3xl p-6 sm:p-8 transition-all shadow-xs space-y-6"
+                onClick={() => setSelectedDetailOrder(order)}
+                className="bg-white border border-[#E8E1D2] hover:border-[#E06C38]/60 hover:shadow-md rounded-3xl p-6 sm:p-7 transition-all shadow-xs space-y-5 cursor-pointer group select-none"
               >
-                
-                {/* Order Top Bar */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-[#E8E1D2]/80">
+                {/* 1. Header: Photo/Icon, Title, Order #, Date, Status */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#E8E1D2]/80">
                   <div className="flex items-center gap-3.5">
                     {order.image_url ? (
                       <img
                         src={order.image_url}
                         alt={orderTitle}
-                        className="w-14 h-14 rounded-2xl object-cover border border-[#E8E1D2] shrink-0 shadow-2xs"
+                        className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl object-cover border border-[#E8E1D2] shrink-0 shadow-2xs group-hover:scale-102 transition-transform"
                         referrerPolicy="no-referrer"
                         onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
                       />
                     ) : (
-                      <div className="w-14 h-14 rounded-2xl bg-[#E06C38]/10 text-[#E06C38] flex items-center justify-center shrink-0">
-                        <Package className="w-7 h-7" />
+                      <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-[#E06C38]/10 text-[#E06C38] flex items-center justify-center shrink-0">
+                        <Package className="w-6 h-6 sm:w-7 sm:h-7" />
                       </div>
                     )}
                     <div>
                       <div className="flex items-center gap-2">
-                        <h3 className="text-base font-bold text-[#1D231E] leading-snug">
+                        <h3 className="text-base font-bold text-[#1D231E] leading-snug group-hover:text-[#E06C38] transition-colors">
                           {orderTitle}
                         </h3>
                         {isCustomStitched && (
                           <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold text-[#E06C38] bg-[#E06C38]/10 px-2 py-0.5 rounded-full">
-                            <Scissors className="w-2.5 h-2.5" /> Hand-Stitched Keepsake
+                            <Scissors className="w-2.5 h-2.5" /> Keepsake
                           </span>
                         )}
                       </div>
@@ -631,14 +628,6 @@ export const CustomOrdersTab: React.FC<CustomOrdersTabProps> = ({ user, onOpenCo
                           <Clock className="w-3 h-3 text-[#8A9588]" />
                           {formatDate(order.created_at)}
                         </span>
-                        {order.quoted_price !== undefined && Number(order.quoted_price) > 0 && (
-                          <>
-                            <span>•</span>
-                            <span className="font-bold text-[#1D231E]">
-                              Quote: ${Number(order.quoted_price).toFixed(2)}
-                            </span>
-                          </>
-                        )}
                       </div>
                     </div>
                   </div>
@@ -648,112 +637,11 @@ export const CustomOrdersTab: React.FC<CustomOrdersTabProps> = ({ user, onOpenCo
                   </div>
                 </div>
 
-                {/* Cancelled State Banner */}
-                {(rawStatus === 'cancelled' || rawStatus === 'canceled') && (
-                  <div className="p-4 bg-gray-50 border border-gray-200 rounded-2xl flex items-start gap-3">
-                    <XCircle className="w-5 h-5 text-gray-500 shrink-0 mt-0.5" />
-                    <div>
-                      <h4 className="text-xs font-bold text-gray-800">
-                        Order Cancelled
-                      </h4>
-                      <p className="text-[11px] text-gray-600 mt-0.5 leading-relaxed">
-                        This order has been cancelled and is no longer active. If you wish to proceed with a new custom kit or stitched keepsake, please feel free to submit a new request anytime.
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Revision Requested State Banner */}
-                {rawStatus === 'revision_requested' && (
-                  <div className="p-4 sm:p-5 bg-amber-50/90 border border-amber-300 rounded-2xl space-y-2.5">
-                    <div className="flex items-center gap-2 text-amber-900 font-bold text-xs sm:text-sm">
-                      <RotateCcw className="w-4 h-4 text-amber-700" />
-                      <span>Revision Requested — Studio Artisan Reviewing</span>
-                    </div>
-                    <p className="text-xs text-amber-950 leading-relaxed">
-                      You requested revisions for this quotation. Our studio master is currently reviewing your notes and preparing an updated itemized quote.
-                    </p>
-                    {order.customer_feedback && (
-                      <div className="p-3 bg-white/95 rounded-xl border border-amber-200 text-xs text-amber-900 shadow-2xs">
-                        <span className="font-bold text-[10px] uppercase tracking-wider text-amber-800 block mb-0.5">
-                          Your Feedback / Revision Notes:
-                        </span>
-                        <p className="italic text-[#1D231E]">"{order.customer_feedback}"</p>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Previous Quotes History Accordion */}
-                {order.quote_history && Array.isArray(order.quote_history) && order.quote_history.length > 0 && (
-                  <div className="bg-[#FAF6EE]/70 rounded-2xl border border-[#E8E1D2] overflow-hidden">
-                    <button
-                      type="button"
-                      onClick={() => toggleOrderHistory(order.raw_order_id || order.id)}
-                      className="w-full px-4 py-3 flex items-center justify-between text-xs font-bold text-[#1D231E] hover:bg-[#FAF6EE] transition-colors cursor-pointer"
-                    >
-                      <span className="flex items-center gap-2">
-                        <History className="w-4 h-4 text-[#E06C38]" />
-                        <span>Previous Quote Versions ({order.quote_history.length})</span>
-                      </span>
-                      <span className="text-[#5A6659] text-[11px] flex items-center gap-1">
-                        {expandedHistoryOrders[String(order.raw_order_id || order.id)] ? 'Hide History' : 'View History'}
-                        {expandedHistoryOrders[String(order.raw_order_id || order.id)] ? (
-                          <ChevronUp className="w-3.5 h-3.5" />
-                        ) : (
-                          <ChevronDown className="w-3.5 h-3.5" />
-                        )}
-                      </span>
-                    </button>
-
-                    {expandedHistoryOrders[String(order.raw_order_id || order.id)] && (
-                      <div className="p-4 pt-0 space-y-3 border-t border-[#E8E1D2]/80 divide-y divide-[#E8E1D2]">
-                        {order.quote_history.map((prevQuote: ArchivedQuote, qIdx: number) => (
-                          <div key={qIdx} className="pt-3 first:pt-0 space-y-2 text-xs">
-                            <div className="flex items-center justify-between">
-                              <span className="font-bold text-[#5A6659] text-[11px]">
-                                Version #{qIdx + 1}
-                                {prevQuote.superseded_at && ` • ${formatDate(prevQuote.superseded_at)}`}
-                              </span>
-                              <span className="font-bold text-[#1D231E] font-mono">
-                                ${(Number(prevQuote.total_amount) || Number(prevQuote.quoted_price) || 0).toFixed(2)}
-                              </span>
-                            </div>
-                            {prevQuote.reason && (
-                              <div className="bg-amber-50/80 p-2.5 rounded-xl border border-amber-200 text-amber-900 text-[11px]">
-                                <span className="font-semibold">Superseded Reason:</span> "{prevQuote.reason}"
-                              </div>
-                            )}
-                            {prevQuote.line_items && prevQuote.line_items.length > 0 && (
-                              <p className="text-[11px] text-[#6B7869]">
-                                {prevQuote.line_items.length} itemized line {prevQuote.line_items.length === 1 ? 'item' : 'items'}
-                                {prevQuote.delivery_charge !== undefined && ` + $${Number(prevQuote.delivery_charge).toFixed(2)} delivery`}
-                              </p>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* 7-Stage Order Progress Tracker Stepper */}
-                <div className="py-2">
-                  <div className="flex items-center justify-between mb-4">
-                    <p className="text-xs font-bold text-[#5A6659] uppercase tracking-wider">
-                      Fulfillment Stepper (7 Stages)
-                    </p>
-                    <span className="text-xs font-bold text-[#E06C38]">
-                      Stage {currentStageIndex + 1} of 7: {ORDER_STAGES[currentStageIndex]?.label}
-                    </span>
-                  </div>
-
+                {/* 2. The progress tracker (Received → Quoted → Confirmed → In Progress → Quality Check → Shipped → Delivered) */}
+                <div className="py-1">
                   {/* Desktop / Tablet Stepper */}
                   <div className="relative hidden md:block">
-                    {/* Connecting Line Background */}
                     <div className="absolute top-5 left-8 right-8 h-1 bg-[#E8E1D2] -z-0 rounded-full" />
-                    
-                    {/* Active Line Fill with smooth transition */}
                     <div 
                       className="absolute top-5 left-8 h-1 bg-[#E06C38] -z-0 transition-all duration-700 ease-out rounded-full"
                       style={{
@@ -761,7 +649,6 @@ export const CustomOrdersTab: React.FC<CustomOrdersTabProps> = ({ user, onOpenCo
                       }}
                     />
 
-                    {/* 7 Stage Nodes */}
                     <div className="grid grid-cols-7 gap-2 relative z-10">
                       {ORDER_STAGES.map((stage, idx) => {
                         const isPassed = idx < currentStageIndex;
@@ -769,40 +656,23 @@ export const CustomOrdersTab: React.FC<CustomOrdersTabProps> = ({ user, onOpenCo
                         const StageIcon = stage.icon;
 
                         return (
-                          <div 
-                            key={stage.id}
-                            className="flex flex-col items-center text-center group"
-                          >
-                            {/* Circle Node Icon */}
+                          <div key={stage.id} className="flex flex-col items-center text-center">
                             <div 
-                              className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all duration-500 shrink-0 font-bold ${
+                              className={`w-9 h-9 rounded-2xl flex items-center justify-center transition-all duration-500 shrink-0 font-bold ${
                                 isPassed
-                                  ? 'bg-emerald-600 text-white shadow-xs'
+                                  ? 'bg-emerald-600 text-white shadow-2xs'
                                   : isCurrent
                                   ? 'bg-[#E06C38] text-white shadow-md ring-4 ring-[#E06C38]/20 scale-105'
                                   : 'bg-[#FAF6EE] text-[#8A9588] border border-[#E8E1D2]'
                               }`}
                             >
-                              {isPassed ? (
-                                <Check className="w-5 h-5" />
-                              ) : (
-                                <StageIcon className="w-4 h-4" />
-                              )}
+                              {isPassed ? <Check className="w-4 h-4" /> : <StageIcon className="w-3.5 h-3.5" />}
                             </div>
-
-                            {/* Stage Label & Description */}
-                            <div className="mt-2 w-full px-1">
-                              <p className={`text-xs font-bold transition-colors truncate ${
-                                isCurrent 
-                                  ? 'text-[#E06C38]' 
-                                  : isPassed 
-                                  ? 'text-[#1D231E]' 
-                                  : 'text-[#8A9588]'
+                            <div className="mt-1.5 w-full px-1">
+                              <p className={`text-[11px] font-bold truncate ${
+                                isCurrent ? 'text-[#E06C38]' : isPassed ? 'text-[#1D231E]' : 'text-[#8A9588]'
                               }`}>
                                 {stage.label}
-                              </p>
-                              <p className="text-[10px] text-[#6B7869] leading-tight mt-0.5 line-clamp-2">
-                                {stage.description}
                               </p>
                             </div>
                           </div>
@@ -811,466 +681,66 @@ export const CustomOrdersTab: React.FC<CustomOrdersTabProps> = ({ user, onOpenCo
                     </div>
                   </div>
 
-                  {/* Mobile Stepper (Vertical Stack for small screens) */}
-                  <div className="md:hidden space-y-2">
-                    {ORDER_STAGES.map((stage, idx) => {
-                      const isPassed = idx < currentStageIndex;
-                      const isCurrent = idx === currentStageIndex;
-                      const StageIcon = stage.icon;
-
-                      return (
-                        <div 
-                          key={stage.id}
-                          className={`flex items-center gap-3 p-2.5 rounded-xl border transition-all ${
-                            isCurrent
-                              ? 'bg-[#FAF6EE] border-[#E06C38]/40 shadow-xs'
-                              : isPassed
-                              ? 'bg-white border-[#E8E1D2]'
-                              : 'bg-[#FAF6EE]/40 border-transparent opacity-60'
-                          }`}
-                        >
-                          <div 
-                            className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 font-bold ${
-                              isPassed
-                                ? 'bg-emerald-600 text-white'
-                                : isCurrent
-                                ? 'bg-[#E06C38] text-white ring-2 ring-[#E06C38]/20'
-                                : 'bg-[#FAF6EE] text-[#8A9588] border border-[#E8E1D2]'
-                            }`}
-                          >
-                            {isPassed ? (
-                              <Check className="w-4 h-4" />
-                            ) : (
-                              <StageIcon className="w-3.5 h-3.5" />
-                            )}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className={`text-xs font-bold ${
-                              isCurrent ? 'text-[#E06C38]' : isPassed ? 'text-[#1D231E]' : 'text-[#8A9588]'
-                            }`}>
-                              {stage.label}
-                            </p>
-                            <p className="text-[10px] text-[#6B7869] truncate">
-                              {stage.description}
-                            </p>
-                          </div>
-                          {isCurrent && (
-                            <span className="text-[10px] font-bold text-[#E06C38] bg-[#E06C38]/10 px-2 py-0.5 rounded-full shrink-0">
-                              Current
-                            </span>
-                          )}
-                        </div>
-                      );
-                    })}
+                  {/* Mobile Stepper (Condensed) */}
+                  <div className="md:hidden flex items-center justify-between bg-[#FAF6EE] p-3 rounded-2xl border border-[#E8E1D2]">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-[#E06C38] animate-pulse" />
+                      <span className="text-xs font-bold text-[#1D231E]">
+                        Stage {currentStageIndex + 1}/7: {ORDER_STAGES[currentStageIndex]?.label}
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-[#6B7869]">
+                      {ORDER_STAGES[currentStageIndex]?.description}
+                    </span>
                   </div>
                 </div>
 
-                {/* ========================================================================= */}
-                {/* LIVE IN-PRODUCTION PROGRESS BAR (FOR custom_stitched ORDERS) */}
-                {/* ========================================================================= */}
-                {isCustomStitched && isInProduction && (
-                  <div className="p-5 sm:p-6 bg-gradient-to-r from-amber-50/80 via-[#FFF9F2] to-orange-50/80 border-2 border-[#E06C38]/30 rounded-3xl space-y-4 shadow-sm animate-fadeIn">
-                    
-                    {/* Header */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                {/* 3. The final total_amount (once quoted — show "Awaiting quote" if pending_quote) & Click Action */}
+                <div className="pt-3 border-t border-[#E8E1D2]/80 flex items-center justify-between gap-3">
+                  <div>
+                    {hasQuotedAmount ? (
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-xs font-semibold text-[#5A6659]">Total Amount:</span>
+                        <span className="text-lg sm:text-xl font-black font-serif text-[#1D231E]">
+                          ${totalAmount.toFixed(2)}
+                        </span>
+                      </div>
+                    ) : isRevisionRequested ? (
                       <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-xl bg-[#E06C38] text-white flex items-center justify-center shrink-0 shadow-xs">
-                          <Scissors className="w-4 h-4 animate-pulse" />
-                        </div>
-                        <div>
-                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#E06C38] flex items-center gap-1">
-                            <Activity className="w-3 h-3" /> Live Artisan Workshop Progress
-                          </span>
-                          <h4 className="text-sm font-bold text-[#1D231E]">
-                            Hand-Stitching Crafting Status
-                          </h4>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 self-start sm:self-auto">
-                        <span className="text-xl sm:text-2xl font-black font-mono text-[#E06C38]">
-                          {progressPercent}%
-                        </span>
-                        <span className="text-xs font-semibold text-[#5A6659]">
-                          completed
+                        <span className="text-xs font-semibold text-[#5A6659]">Total Amount:</span>
+                        <span className="text-xs font-bold text-amber-900 bg-amber-100 px-3 py-1 rounded-full border border-amber-300 inline-flex items-center gap-1.5">
+                          <RotateCcw className="w-3.5 h-3.5 text-amber-700" />
+                          Revision in review
                         </span>
                       </div>
-                    </div>
-
-                    {/* Progress Bar Container */}
-                    <div className="space-y-1.5">
-                      <div className="w-full h-3.5 bg-[#E8E1D2] rounded-full overflow-hidden p-0.5 border border-[#D5CDBC]/60">
-                        <div 
-                          className="h-full bg-gradient-to-r from-[#E06C38] via-[#e87c4d] to-[#2D5A43] rounded-full transition-all duration-700 ease-out shadow-xs relative"
-                          style={{ width: `${Math.max(4, progressPercent)}%` }}
-                        >
-                          <div className="absolute inset-0 bg-white/20 animate-pulse" />
-                        </div>
-                      </div>
-                      <div className="flex justify-between items-center text-[10px] font-semibold text-[#8A9588] px-1">
-                        <span>0% Queued</span>
-                        <span>50% Mid-craft</span>
-                        <span>100% Ready for Quality Check</span>
-                      </div>
-                    </div>
-
-                    {/* Progress Note Underneath */}
-                    {progressNote && (
-                      <div className="p-3.5 bg-white rounded-2xl border border-[#E8E1D2] text-xs text-[#1D231E] flex items-start gap-2.5 shadow-2xs">
-                        <Sparkles className="w-4 h-4 text-[#E06C38] shrink-0 mt-0.5" />
-                        <div className="min-w-0 flex-1">
-                          <p className="font-bold text-[#1D231E] leading-relaxed">
-                            {progressNote}
-                          </p>
-                          {order.progress_updated_at && (
-                            <p className="text-[10px] text-[#8A9588] mt-1 flex items-center gap-1 font-mono">
-                              <Clock className="w-3 h-3" />
-                              <span>Last studio update: {new Date(order.progress_updated_at).toLocaleString()}</span>
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* ========================================================================= */}
-                {/* SHIPPED TRACKING NUMBER CARD */}
-                {/* ========================================================================= */}
-                {isShipped && order.tracking_number && (
-                  <div className="p-5 bg-gradient-to-r from-sky-50 to-[#F0F8FF] border-2 border-sky-300 rounded-3xl space-y-3 shadow-xs animate-fadeIn">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-2xl bg-sky-600 text-white flex items-center justify-center shrink-0 shadow-sm">
-                          <Truck className="w-5 h-5 animate-bounce" />
-                        </div>
-                        <div>
-                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-sky-800 flex items-center gap-1">
-                            <Radio className="w-2.5 h-2.5 text-sky-600" /> Dispatched via Courier
-                          </span>
-                          <h4 className="text-sm font-bold text-sky-950">
-                            Courier Tracking Number
-                          </h4>
-                        </div>
-                      </div>
-
-                      {/* Copyable Tracking Code */}
-                      <div className="flex items-center gap-2 bg-white px-3.5 py-2 rounded-2xl border border-sky-200 shadow-2xs">
-                        <span className="font-mono text-xs font-bold text-sky-950 select-all">
-                          {order.tracking_number}
-                        </span>
-                        <button
-                          onClick={() => handleCopyTracking(order.tracking_number!)}
-                          title="Copy tracking code"
-                          className="p-1 text-sky-700 hover:text-sky-950 hover:bg-sky-50 rounded-lg transition-colors cursor-pointer flex items-center gap-1 text-[11px] font-semibold"
-                        >
-                          {copiedTracking === order.tracking_number ? (
-                            <>
-                              <Check className="w-3.5 h-3.5 text-emerald-600" />
-                              <span className="text-emerald-700 font-bold">Copied!</span>
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="w-3.5 h-3.5" />
-                              <span>Copy</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    </div>
-
-                    <p className="text-xs text-sky-900 leading-relaxed">
-                      Your parcel has been dispatched from our studio with tracked delivery. Please allow 24 hours for carrier tracking updates to synchronize.
-                    </p>
-                  </div>
-                )}
-
-                {/* Quoted State Action Card (When status is 'quoted') */}
-                {isQuotedState && (
-                  <div className="p-5 sm:p-6 bg-[#FAF6EE] border-2 border-[#E06C38]/30 rounded-3xl space-y-5 animate-fadeIn shadow-xs">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#1D231E]/10 pb-4">
-                      <div>
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-[#E06C38] text-white mb-1.5">
-                          <Sparkles className="w-3 h-3" /> Quote Ready for Approval
-                        </span>
-                        <h4 className="text-base sm:text-lg font-bold font-serif text-[#1D231E]">
-                          Itemized Studio Quotation
-                        </h4>
-                        <p className="text-xs text-[#5A6659] mt-0.5">
-                          Review the detailed breakdown of thread floss, materials, and artisan preparation below.
-                        </p>
-                      </div>
-
-                      {order.quoted_price !== undefined && Number(order.quoted_price) > 0 && (
-                        <div className="bg-white px-5 py-3 rounded-2xl border border-[#E8E1D2] text-right shrink-0 shadow-2xs">
-                          <span className="text-[10px] font-bold text-[#8A9588] uppercase tracking-wider block">
-                            Total Quoted Price
-                          </span>
-                          <span className="text-2xl font-black font-serif text-[#1D231E]">
-                            ${Number(order.quoted_price).toFixed(2)}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Itemized Line Items Table if line_items exist */}
-                    {order.quote?.line_items && Array.isArray(order.quote.line_items) && order.quote.line_items.length > 0 ? (
-                      <div className="bg-white rounded-2xl border border-[#1D231E]/10 overflow-hidden shadow-2xs">
-                        <div className="px-4 py-3 bg-[#1D231E]/5 border-b border-[#1D231E]/10 flex items-center justify-between">
-                          <span className="text-xs font-bold uppercase tracking-wider text-[#1D231E] flex items-center gap-1.5">
-                            <Layers className="w-3.5 h-3.5 text-[#E06C38]" /> Materials & Components Breakdown
-                          </span>
-                          <span className="text-[11px] text-[#1D231E]/60 font-medium">
-                            {order.quote.line_items.length} {order.quote.line_items.length === 1 ? 'item' : 'items'}
-                          </span>
-                        </div>
-
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-left text-xs border-collapse">
-                            <thead>
-                              <tr className="border-b border-[#1D231E]/10 text-[10px] font-bold uppercase tracking-wider text-[#1D231E]/60 bg-[#FAF6EE]/50">
-                                <th className="py-2.5 px-4 font-semibold">Item & Description</th>
-                                <th className="py-2.5 px-3 font-semibold text-center">Reference</th>
-                                <th className="py-2.5 px-3 font-semibold text-center">Qty</th>
-                                <th className="py-2.5 px-3 font-semibold text-right">Unit Price</th>
-                                <th className="py-2.5 px-4 font-semibold text-right">Total</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-[#1D231E]/5">
-                              {order.quote.line_items.map((item, idx) => (
-                                <tr key={item.id || idx} className="hover:bg-[#FAF6EE]/30 transition-colors">
-                                  <td className="py-2.5 px-4">
-                                    <div className="flex items-center gap-2">
-                                      {item.hex && (
-                                        <span
-                                          className="w-3.5 h-3.5 rounded-full shrink-0 border border-black/20 shadow-2xs"
-                                          style={{ backgroundColor: item.hex }}
-                                          title={item.dmc_code ? `DMC #${item.dmc_code}` : undefined}
-                                        />
-                                      )}
-                                      <span className="font-semibold text-[#1D231E]">{item.description}</span>
-                                    </div>
-                                  </td>
-                                  <td className="py-2.5 px-3 text-center text-[#1D231E]/60 text-[11px]">
-                                    {item.reference_qty ? (
-                                      <span className="px-2 py-0.5 bg-[#FAF6EE] rounded border border-[#1D231E]/10 font-mono text-[10px]">
-                                        {item.reference_qty}
-                                      </span>
-                                    ) : (
-                                      '—'
-                                    )}
-                                  </td>
-                                  <td className="py-2.5 px-3 text-center font-medium text-[#1D231E]">
-                                    {item.quantity} {item.unit || 'pcs'}
-                                  </td>
-                                  <td className="py-2.5 px-3 text-right text-[#1D231E]/70 font-mono">
-                                    ${Number(item.unit_price).toFixed(2)}
-                                  </td>
-                                  <td className="py-2.5 px-4 text-right font-bold text-[#1D231E] font-mono">
-                                    ${Number(item.total).toFixed(2)}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-
-                        {/* Pricing Subtotal, Crafting, Shipping & Grand Total summary */}
-                        <div className="bg-[#FAF6EE]/40 border-t border-[#1D231E]/10 p-4 space-y-2 text-xs">
-                          <div className="flex justify-between text-[#1D231E]/70">
-                            <span>Items Subtotal:</span>
-                            <span className="font-semibold font-mono text-[#1D231E]">
-                              ${(order.quote.items_subtotal ?? order.quote.line_items.reduce((s, i) => s + (Number(i.total) || 0), 0)).toFixed(2)}
-                            </span>
-                          </div>
-
-                          {order.quote.crafting_charge !== undefined && Number(order.quote.crafting_charge) > 0 && (
-                            <div className="flex justify-between text-[#1D231E]/70">
-                              <span className="flex items-center gap-1">
-                                <Scissors className="w-3 h-3 text-[#2D5A43]" /> Crafting & Artisan Preparation:
-                              </span>
-                              <span className="font-semibold font-mono text-[#1D231E]">
-                                ${Number(order.quote.crafting_charge).toFixed(2)}
-                              </span>
-                            </div>
-                          )}
-
-                          <div className="flex justify-between text-[#1D231E]/70">
-                            <span className="flex items-center gap-1">
-                              <Truck className="w-3 h-3 text-[#E06C38]" /> Tracked Parcel Shipping:
-                            </span>
-                            <span className="font-semibold font-mono text-[#1D231E]">
-                              ${(Number(order.quote.delivery_charge) || 0).toFixed(2)}
-                            </span>
-                          </div>
-
-                          <div className="flex justify-between pt-2 border-t border-[#1D231E]/10 text-sm font-bold text-[#1D231E]">
-                            <span>Total Payable:</span>
-                            <span className="text-base font-black font-serif text-[#E06C38]">
-                              ${(Number(order.quote.total_amount) || Number(order.quoted_price) || 0).toFixed(2)}
-                            </span>
-                          </div>
-                        </div>
+                    ) : isCancelled ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-gray-500">Total Amount:</span>
+                        <span className="text-xs font-medium text-gray-400">Order cancelled</span>
                       </div>
                     ) : (
-                      /* Fallback for legacy flat quotes */
-                      <div className="bg-white p-4 rounded-2xl border border-[#1D231E]/10 space-y-2 text-xs">
-                        <div className="flex justify-between text-[#1D231E]/70">
-                          <span>Custom Materials & Crafting:</span>
-                          <span className="font-semibold font-mono text-[#1D231E]">
-                            ${(Number(order.quote?.item_price) || Number(order.item_price) || (Number(order.quoted_price) - (Number(order.delivery_charge) || 0)) || 0).toFixed(2)}
-                          </span>
-                        </div>
-                        <div className="flex justify-between text-[#1D231E]/70">
-                          <span>Tracked Delivery:</span>
-                          <span className="font-semibold font-mono text-[#1D231E]">
-                            ${(Number(order.quote?.delivery_charge) || Number(order.delivery_charge) || 0).toFixed(2)}
-                          </span>
-                        </div>
-                        <div className="flex justify-between pt-2 border-t border-[#1D231E]/10 text-sm font-bold text-[#1D231E]">
-                          <span>Total Quoted Amount:</span>
-                          <span className="text-base font-black font-serif text-[#E06C38]">
-                            ${(Number(order.quoted_price) || Number(order.total_amount) || 0).toFixed(2)}
-                          </span>
-                        </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-[#5A6659]">Total Amount:</span>
+                        <span className="text-xs font-bold text-amber-800 bg-amber-50 px-3 py-1 rounded-full border border-amber-200 inline-flex items-center gap-1.5">
+                          <Clock className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
+                          Awaiting quote
+                        </span>
                       </div>
                     )}
-
-                    {/* Artisan Note */}
-                    {(order.quote?.admin_notes || order.status_note || order.admin_notes) && (
-                      <div className="p-3.5 bg-white rounded-2xl border border-[#E8E1D2]/80 text-xs text-[#1D231E]">
-                        <p className="font-bold text-[#556653] text-[11px] mb-0.5 flex items-center gap-1.5">
-                          <MessageSquare className="w-3.5 h-3.5 text-[#E06C38]" /> Studio Artisan Note:
-                        </p>
-                        <p className="leading-relaxed text-[#1D231E]/80">
-                          {order.quote?.admin_notes || order.status_note || order.admin_notes}
-                        </p>
-                      </div>
-                    )}
-
-                    <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-                      <p className="text-[11px] text-[#6B7869] flex items-center gap-1">
-                        <ShieldCheck className="w-3.5 h-3.5 text-[#556653]" />
-                        <span>Includes premium DMC floss, Zweigart Aida & tracked shipping.</span>
-                      </p>
-                      
-                      <div className="flex flex-wrap items-center gap-2.5">
-                        {/* Request Revision Button */}
-                        <button
-                          type="button"
-                          onClick={() => handleOpenRevision(order)}
-                          className="px-4 py-2.5 bg-white hover:bg-[#FAF6EE] text-[#1D231E] border border-[#1D231E]/20 text-xs font-bold rounded-full transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs shrink-0"
-                        >
-                          <RotateCcw className="w-3.5 h-3.5 text-amber-600" />
-                          <span>Request Revision</span>
-                        </button>
-
-                        {/* Cancel Order Button */}
-                        <button
-                          type="button"
-                          onClick={() => handleOpenCancel(order)}
-                          className="px-4 py-2.5 bg-transparent hover:bg-rose-50 text-rose-700 hover:text-rose-800 border border-rose-200 text-xs font-semibold rounded-full transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
-                        >
-                          <XCircle className="w-3.5 h-3.5 text-rose-500" />
-                          <span>Cancel Order</span>
-                        </button>
-
-                        {/* Confirm Order Button */}
-                        <button
-                          onClick={() => handleConfirmQuote(order)}
-                          disabled={confirmingOrderId === (order.raw_order_id || order.id)}
-                          className="px-6 py-2.5 bg-[#1D231E] hover:bg-[#323D34] text-white text-xs font-bold rounded-full transition-all cursor-pointer flex items-center gap-2 shadow-sm disabled:opacity-50 shrink-0"
-                        >
-                          {confirmingOrderId === (order.raw_order_id || order.id) ? (
-                            <>
-                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                              <span>Confirming Order...</span>
-                            </>
-                          ) : (
-                            <>
-                              <Check className="w-3.5 h-3.5 text-[#E06C38]" />
-                              <span>Confirm Order</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    </div>
                   </div>
-                )}
 
-                {/* Awaiting Payment State Banner */}
-                {isAwaitingPayment && (
-                  <div className="p-4 bg-amber-50/80 border border-amber-200 rounded-2xl flex items-start gap-3">
-                    <Clock className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
-                    <div>
-                      <h4 className="text-xs font-bold text-amber-900">
-                        Quote Confirmed — Awaiting Payment Verification
-                      </h4>
-                      <p className="text-[11px] text-amber-800 mt-0.5 leading-relaxed">
-                        Thank you for confirming your quote! Our studio team is preparing your order materials and will confirm once verified.
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Order Details & Delivery Info Grid */}
-                <div className="pt-4 border-t border-[#E8E1D2]/80 grid grid-cols-1 md:grid-cols-2 gap-4">
-                  
-                  {/* Status / Artisan Note */}
-                  {order.status_note && !isQuotedState && (
-                    <div className="p-4 bg-[#FAF6EE] rounded-2xl border border-[#E8E1D2] flex items-start gap-3">
-                      <FileText className="w-4 h-4 text-[#E06C38] shrink-0 mt-0.5" />
-                      <div>
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-[#93A28F] block">
-                          Studio Update
-                        </span>
-                        <p className="text-xs text-[#1D231E] mt-0.5 leading-relaxed font-medium">
-                          {order.status_note}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Estimated Turnaround / Completion */}
-                  {order.estimated_completion && (
-                    <div className="p-4 bg-[#FAF6EE] rounded-2xl border border-[#E8E1D2] flex items-start gap-3">
-                      <Calendar className="w-4 h-4 text-[#556653] shrink-0 mt-0.5" />
-                      <div>
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-[#93A28F] block">
-                          Estimated Turnaround
-                        </span>
-                        <p className="text-xs font-bold text-[#1D231E] mt-0.5">
-                          {order.estimated_completion}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Delivery Address & Customer Details */}
-                  {(details.delivery_address || details.phone_number || details.customer_phone || details.phone) && (
-                    <div className="p-4 bg-[#FAF6EE] rounded-2xl border border-[#E8E1D2] flex items-start gap-3">
-                      <MapPin className="w-4 h-4 text-[#8A9588] shrink-0 mt-0.5" />
-                      <div className="min-w-0">
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-[#93A28F] block">
-                          Destination Address
-                        </span>
-                        {details.delivery_address && (
-                          <p className="text-xs text-[#1D231E] mt-0.5 leading-relaxed font-medium line-clamp-2">
-                            {details.delivery_address}
-                          </p>
-                        )}
-                        {(details.phone_number || details.customer_phone || details.phone) && (
-                          <p className="text-[11px] text-[#6B7869] mt-0.5 flex items-center gap-1">
-                            <Phone className="w-3 h-3" />
-                            <span>{details.phone_number || details.customer_phone || details.phone}</span>
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedDetailOrder(order);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold text-[#E06C38] bg-[#E06C38]/10 group-hover:bg-[#E06C38] group-hover:text-white transition-all cursor-pointer shadow-2xs shrink-0"
+                  >
+                    <span>{hasQuotedAmount ? 'View Quote Breakdown' : 'View Order Details'}</span>
+                    <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                  </button>
                 </div>
-
               </div>
             );
           })}
@@ -1296,6 +766,488 @@ export const CustomOrdersTab: React.FC<CustomOrdersTabProps> = ({ user, onOpenCo
           )}
         </div>
       )}
+
+      {/* ========================================================================= */}
+      {/* ORDER DETAIL & FULL ITEMIZED QUOTE MODAL */}
+      {/* ========================================================================= */}
+      {selectedDetailOrder && (() => {
+        const order = selectedDetailOrder;
+        const rawStatus = (order.fulfillment_status || order.status || 'pending_quote').toLowerCase();
+        const currentStageIndex = getStageIndex(rawStatus);
+        const orderTitle = order.title || order.title_name || `Custom Order #${order.id}`;
+        const details = order.request_details || {};
+        const isQuotedState = rawStatus === 'quoted';
+        const isAwaitingPayment = rawStatus === 'awaiting_payment';
+        const isPendingQuote = rawStatus === 'pending_quote' || rawStatus === 'received';
+        const isRevisionRequested = rawStatus === 'revision_requested';
+        const isCancelled = rawStatus === 'cancelled' || rawStatus === 'canceled';
+
+        const isCustomStitched = order.order_type === 'custom_stitched' || 
+          (order.title && order.title.toLowerCase().includes('stitched')) ||
+          (details.order_type === 'custom_stitched');
+
+        const isInProduction = rawStatus === 'in_production' || 
+          rawStatus === 'in_progress' || 
+          currentStageIndex === 3;
+
+        const isShipped = rawStatus === 'shipped' || currentStageIndex === 5 || currentStageIndex === 6 || Boolean(order.tracking_number);
+
+        const progressPercent = typeof order.progress_percent === 'number' 
+          ? Math.min(100, Math.max(0, order.progress_percent))
+          : order.progress_percent !== undefined
+          ? Math.min(100, Math.max(0, Number(order.progress_percent) || 0))
+          : 0;
+
+        const progressNote = order.progress_note || details.progress_note || (
+          progressPercent > 0 
+            ? `${progressPercent}% stitched — Studio hand embroidery actively underway.`
+            : 'Artisan hand stitching and fabric mounting in progress.'
+        );
+
+        const quote: any = (typeof order.quote === 'object' && order.quote !== null) ? order.quote : {};
+        const lineItems: any[] = quote.line_items || [];
+        const hasLineItems = Array.isArray(lineItems) && lineItems.length > 0;
+        const hasQuoteData = !isPendingQuote || hasLineItems || (Number(order.quoted_price) > 0);
+
+        const itemsSubtotal = quote.items_subtotal !== undefined 
+          ? Number(quote.items_subtotal) 
+          : hasLineItems
+          ? lineItems.reduce((acc: number, it: any) => acc + (Number(it.total) || (Number(it.quantity) * Number(it.unit_price)) || 0), 0)
+          : Number(quote.item_price) || Number(order.item_price) || 0;
+
+        const craftingCharge = Number(quote.crafting_charge) || 0;
+        const deliveryCharge = Number(quote.delivery_charge) || Number(order.delivery_charge) || 0;
+        const totalAmount = Number(quote.total_amount) || Number(order.quoted_price) || Number(order.total_amount) || (itemsSubtotal + craftingCharge + deliveryCharge);
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fadeIn overflow-y-auto">
+            <div 
+              className="bg-white rounded-3xl border border-[#E8E1D2] max-w-2xl w-full p-6 sm:p-8 shadow-2xl space-y-6 my-8 max-h-[90vh] overflow-y-auto animate-scaleUp"
+              onClick={(e) => e.stopPropagation()}
+            >
+              
+              {/* Modal Header */}
+              <div className="flex items-start justify-between gap-4 pb-4 border-b border-[#E8E1D2]">
+                <div className="flex items-center gap-3.5">
+                  {order.image_url ? (
+                    <img
+                      src={order.image_url}
+                      alt={orderTitle}
+                      className="w-14 h-14 rounded-2xl object-cover border border-[#E8E1D2] shrink-0 shadow-2xs"
+                      referrerPolicy="no-referrer"
+                      onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                    />
+                  ) : (
+                    <div className="w-14 h-14 rounded-2xl bg-[#E06C38]/10 text-[#E06C38] flex items-center justify-center shrink-0">
+                      <Package className="w-7 h-7" />
+                    </div>
+                  )}
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-lg font-bold text-[#1D231E]">
+                        {orderTitle}
+                      </h3>
+                      {isCustomStitched && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#E06C38] bg-[#E06C38]/10 px-2.5 py-0.5 rounded-full">
+                          <Scissors className="w-2.5 h-2.5" /> Keepsake
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[#6B7869] mt-1">
+                      <span className="font-mono font-semibold text-[#8A9588]">
+                        Order #{String(order.raw_order_id || order.id).replace('order_', '').slice(-8)}
+                      </span>
+                      <span>•</span>
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-3 h-3 text-[#8A9588]" />
+                        {formatDate(order.created_at)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  {getStatusBadge(rawStatus)}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDetailOrder(null)}
+                    className="p-2 text-[#8A9588] hover:text-[#1D231E] hover:bg-[#FAF6EE] rounded-full transition-colors cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Revision Requested State Banner */}
+              {isRevisionRequested && (
+                <div className="p-4 sm:p-5 bg-amber-50/90 border border-amber-300 rounded-2xl space-y-2.5">
+                  <div className="flex items-center gap-2 text-amber-900 font-bold text-xs sm:text-sm">
+                    <RotateCcw className="w-4 h-4 text-amber-700" />
+                    <span>Revision Requested — Studio Artisan Reviewing</span>
+                  </div>
+                  <p className="text-xs text-amber-950 leading-relaxed">
+                    You requested revisions for this quotation. Our studio master is currently reviewing your notes and preparing an updated itemized quote.
+                  </p>
+                  {order.customer_feedback && (
+                    <div className="p-3 bg-white/95 rounded-xl border border-amber-200 text-xs text-amber-900 shadow-2xs">
+                      <span className="font-bold text-[10px] uppercase tracking-wider text-amber-800 block mb-0.5">
+                        Your Feedback / Revision Notes:
+                      </span>
+                      <p className="italic text-[#1D231E]">"{order.customer_feedback}"</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Cancelled State Banner */}
+              {isCancelled && (
+                <div className="p-4 bg-gray-50 border border-gray-200 rounded-2xl flex items-start gap-3">
+                  <XCircle className="w-5 h-5 text-gray-500 shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="text-xs font-bold text-gray-800">
+                      Order Cancelled
+                    </h4>
+                    <p className="text-[11px] text-gray-600 mt-0.5 leading-relaxed">
+                      This order has been cancelled and is no longer active. You may submit a new custom request anytime.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* ================================================================= */}
+              {/* CASE 1: PENDING QUOTE (NO QUOTE DATA YET) */}
+              {/* ================================================================= */}
+              {isPendingQuote && !hasQuoteData ? (
+                <div className="p-6 sm:p-8 bg-[#FAF6EE] border-2 border-dashed border-[#D5CDBC] rounded-3xl text-center space-y-3">
+                  <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mx-auto shadow-2xs">
+                    <Clock className="w-6 h-6 animate-pulse" />
+                  </div>
+                  <h4 className="text-base font-bold text-[#1D231E]">
+                    We're preparing your quote — check back soon
+                  </h4>
+                  <p className="text-xs text-[#5A6659] max-w-md mx-auto leading-relaxed">
+                    Our studio artisans are currently calculating your DMC thread skein counts, premium fabric dimensions, and workshop preparation time. You'll receive a full itemized quote breakdown here once ready.
+                  </p>
+                </div>
+              ) : (
+                /* ================================================================= */
+                /* CASE 2: FULL ITEMIZED QUOTE BREAKDOWN */
+                /* ================================================================= */
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-bold uppercase tracking-wider text-[#5A6659] flex items-center gap-1.5">
+                      <Layers className="w-4 h-4 text-[#E06C38]" /> Itemized Quote Breakdown
+                    </h4>
+                    {isQuotedState && (
+                      <span className="text-[10px] font-bold uppercase tracking-wider bg-orange-100 text-orange-800 px-2.5 py-0.5 rounded-full border border-orange-200">
+                        Ready for approval
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Table Structure matching exact format requested */}
+                  <div className="bg-[#FAF6EE]/50 rounded-2xl border border-[#E8E1D2] overflow-hidden shadow-2xs">
+                    {hasLineItems ? (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead>
+                            <tr className="border-b border-[#E8E1D2] text-[11px] font-bold uppercase tracking-wider text-[#5A6659] bg-[#FAF6EE]">
+                              <th className="py-3 px-4 font-bold">Item</th>
+                              <th className="py-3 px-3 font-bold text-center">Qty</th>
+                              <th className="py-3 px-3 font-bold text-right">Unit Price</th>
+                              <th className="py-3 px-4 font-bold text-right">Total</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-[#E8E1D2]/80 bg-white">
+                            {lineItems.map((item, idx) => (
+                              <tr key={item.id || idx} className="hover:bg-[#FAF6EE]/30 transition-colors">
+                                <td className="py-3 px-4">
+                                  <div className="flex items-center gap-2.5">
+                                    {item.hex && (
+                                      <span
+                                        className="w-3.5 h-3.5 rounded-full shrink-0 border border-black/20 shadow-2xs"
+                                        style={{ backgroundColor: item.hex }}
+                                        title={item.dmc_code ? `DMC #${item.dmc_code}` : undefined}
+                                      />
+                                    )}
+                                    <span className="font-semibold text-[#1D231E]">{item.description}</span>
+                                  </div>
+                                </td>
+                                <td className="py-3 px-3 text-center font-medium text-[#1D231E]">
+                                  {item.quantity} {item.unit ? `(${item.unit})` : ''}
+                                </td>
+                                <td className="py-3 px-3 text-right text-[#5A6659] font-mono">
+                                  ${Number(item.unit_price).toFixed(2)}
+                                </td>
+                                <td className="py-3 px-4 text-right font-bold text-[#1D231E] font-mono">
+                                  ${Number(item.total).toFixed(2)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      /* Fallback for legacy flat quotes */
+                      <div className="p-4 bg-white border-b border-[#E8E1D2] text-xs flex justify-between items-center">
+                        <span className="font-semibold text-[#1D231E]">Custom Materials & Crafting</span>
+                        <span className="font-bold text-[#1D231E] font-mono">${itemsSubtotal.toFixed(2)}</span>
+                      </div>
+                    )}
+
+                    {/* Subtotals & Grand Total Section */}
+                    <div className="p-4 bg-[#FAF6EE] border-t border-[#E8E1D2] space-y-2 text-xs">
+                      <div className="flex justify-between text-[#5A6659]">
+                        <span>Items Subtotal:</span>
+                        <span className="font-semibold font-mono text-[#1D231E]">
+                          ${itemsSubtotal.toFixed(2)}
+                        </span>
+                      </div>
+
+                      {craftingCharge > 0 && (
+                        <div className="flex justify-between text-[#5A6659]">
+                          <span className="flex items-center gap-1.5">
+                            <Scissors className="w-3.5 h-3.5 text-[#2D5A43]" /> Crafting Charge:
+                          </span>
+                          <span className="font-semibold font-mono text-[#1D231E]">
+                            ${craftingCharge.toFixed(2)}
+                          </span>
+                        </div>
+                      )}
+
+                      <div className="flex justify-between text-[#5A6659]">
+                        <span className="flex items-center gap-1.5">
+                          <Truck className="w-3.5 h-3.5 text-[#E06C38]" /> Delivery Charge:
+                        </span>
+                        <span className="font-semibold font-mono text-[#1D231E]">
+                          ${deliveryCharge.toFixed(2)}
+                        </span>
+                      </div>
+
+                      <div className="flex justify-between pt-2.5 border-t border-[#D5CDBC] text-sm font-bold text-[#1D231E]">
+                        <span>Total:</span>
+                        <span className="text-base font-black font-serif text-[#E06C38]">
+                          ${totalAmount.toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Studio Artisan Notes */}
+                  {(quote.admin_notes || order.status_note || order.admin_notes) && (
+                    <div className="p-4 bg-[#FAF6EE] rounded-2xl border border-[#E8E1D2] text-xs text-[#1D231E]">
+                      <p className="font-bold text-[#556653] text-[11px] mb-1 flex items-center gap-1.5">
+                        <MessageSquare className="w-3.5 h-3.5 text-[#E06C38]" /> Studio Artisan Note:
+                      </p>
+                      <p className="leading-relaxed text-[#1D231E]/90">
+                        {quote.admin_notes || order.status_note || order.admin_notes}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Previous Quotes History Accordion */}
+                  {order.quote_history && Array.isArray(order.quote_history) && order.quote_history.length > 0 && (
+                    <div className="bg-[#FAF6EE]/70 rounded-2xl border border-[#E8E1D2] overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => toggleOrderHistory(order.raw_order_id || order.id)}
+                        className="w-full px-4 py-3 flex items-center justify-between text-xs font-bold text-[#1D231E] hover:bg-[#FAF6EE] transition-colors cursor-pointer"
+                      >
+                        <span className="flex items-center gap-2">
+                          <History className="w-4 h-4 text-[#E06C38]" />
+                          <span>Previous Quote Versions ({order.quote_history.length})</span>
+                        </span>
+                        <span className="text-[#5A6659] text-[11px] flex items-center gap-1">
+                          {expandedHistoryOrders[String(order.raw_order_id || order.id)] ? 'Hide History' : 'View History'}
+                          {expandedHistoryOrders[String(order.raw_order_id || order.id)] ? (
+                            <ChevronUp className="w-3.5 h-3.5" />
+                          ) : (
+                            <ChevronDown className="w-3.5 h-3.5" />
+                          )}
+                        </span>
+                      </button>
+
+                      {expandedHistoryOrders[String(order.raw_order_id || order.id)] && (
+                        <div className="p-4 pt-0 space-y-3 border-t border-[#E8E1D2]/80 divide-y divide-[#E8E1D2]">
+                          {order.quote_history.map((prevQuote: ArchivedQuote, qIdx: number) => (
+                            <div key={qIdx} className="pt-3 first:pt-0 space-y-2 text-xs">
+                              <div className="flex items-center justify-between">
+                                <span className="font-bold text-[#5A6659] text-[11px]">
+                                  Version #{qIdx + 1}
+                                  {prevQuote.superseded_at && ` • ${formatDate(prevQuote.superseded_at)}`}
+                                </span>
+                                <span className="font-bold text-[#1D231E] font-mono">
+                                  ${(Number(prevQuote.total_amount) || Number(prevQuote.quoted_price) || 0).toFixed(2)}
+                                </span>
+                              </div>
+                              {prevQuote.reason && (
+                                <div className="bg-amber-50/80 p-2.5 rounded-xl border border-amber-200 text-amber-900 text-[11px]">
+                                  <span className="font-semibold">Superseded Reason:</span> "{prevQuote.reason}"
+                                </div>
+                              )}
+                              {prevQuote.line_items && prevQuote.line_items.length > 0 && (
+                                <p className="text-[11px] text-[#6B7869]">
+                                  {prevQuote.line_items.length} itemized line {prevQuote.line_items.length === 1 ? 'item' : 'items'}
+                                  {prevQuote.delivery_charge !== undefined && ` + $${Number(prevQuote.delivery_charge).toFixed(2)} delivery`}
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Quoted State Action Buttons */}
+                  {isQuotedState && (
+                    <div className="pt-3 border-t border-[#E8E1D2] flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenRevision(order)}
+                          className="px-4 py-2.5 bg-white hover:bg-[#FAF6EE] text-[#1D231E] border border-[#1D231E]/20 text-xs font-bold rounded-full transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5 text-amber-600" />
+                          <span>Request Revision</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleOpenCancel(order)}
+                          className="px-4 py-2.5 bg-transparent hover:bg-rose-50 text-rose-700 hover:text-rose-800 border border-rose-200 text-xs font-semibold rounded-full transition-all cursor-pointer flex items-center gap-1.5"
+                        >
+                          <XCircle className="w-3.5 h-3.5 text-rose-500" />
+                          <span>Cancel Order</span>
+                        </button>
+                      </div>
+
+                      {/* Confirm Order Button */}
+                      <button
+                        onClick={() => handleConfirmQuote(order)}
+                        disabled={confirmingOrderId === (order.raw_order_id || order.id)}
+                        className="px-6 py-2.5 bg-[#1D231E] hover:bg-[#323D34] text-white text-xs font-bold rounded-full transition-all cursor-pointer flex items-center gap-2 shadow-sm disabled:opacity-50"
+                      >
+                        {confirmingOrderId === (order.raw_order_id || order.id) ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            <span>Confirming Order...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-[#E06C38]" />
+                            <span>Confirm Order</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Awaiting Payment Banner */}
+                  {isAwaitingPayment && (
+                    <div className="p-4 bg-amber-50/80 border border-amber-200 rounded-2xl flex items-start gap-3">
+                      <Clock className="w-4 h-4 text-amber-700 shrink-0 mt-0.5 animate-spin" />
+                      <div>
+                        <h4 className="text-xs font-bold text-amber-900">
+                          Quote Confirmed — Awaiting Payment Verification
+                        </h4>
+                        <p className="text-[11px] text-amber-800 mt-0.5 leading-relaxed">
+                          Thank you for confirming your quote! Our studio team is preparing your materials.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* LIVE WORKSHOP PROGRESS (if custom stitched in production) */}
+              {isCustomStitched && isInProduction && (
+                <div className="p-5 bg-gradient-to-r from-amber-50/80 via-[#FFF9F2] to-orange-50/80 border-2 border-[#E06C38]/30 rounded-3xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#E06C38] flex items-center gap-1">
+                      <Activity className="w-3 h-3" /> Live Workshop Progress
+                    </span>
+                    <span className="text-base font-black font-mono text-[#E06C38]">
+                      {progressPercent}% completed
+                    </span>
+                  </div>
+                  <div className="w-full h-3 bg-[#E8E1D2] rounded-full overflow-hidden p-0.5 border border-[#D5CDBC]/60">
+                    <div 
+                      className="h-full bg-gradient-to-r from-[#E06C38] via-[#e87c4d] to-[#2D5A43] rounded-full transition-all duration-700 ease-out"
+                      style={{ width: `${Math.max(4, progressPercent)}%` }}
+                    />
+                  </div>
+                  {progressNote && (
+                    <p className="text-xs text-[#1D231E] font-medium leading-relaxed">
+                      {progressNote}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* SHIPPED TRACKING NUMBER */}
+              {isShipped && order.tracking_number && (
+                <div className="p-4 bg-sky-50 border border-sky-200 rounded-2xl flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <Truck className="w-5 h-5 text-sky-600 shrink-0" />
+                    <div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-sky-800 block">
+                        Courier Tracking
+                      </span>
+                      <span className="font-mono text-xs font-bold text-sky-950">
+                        {order.tracking_number}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleCopyTracking(order.tracking_number!)}
+                    className="px-3 py-1.5 bg-white hover:bg-sky-100 text-sky-900 text-xs font-semibold rounded-xl border border-sky-300 transition-colors cursor-pointer"
+                  >
+                    {copiedTracking === order.tracking_number ? 'Copied!' : 'Copy Code'}
+                  </button>
+                </div>
+              )}
+
+              {/* Order Specs & Destination Summary */}
+              <div className="pt-4 border-t border-[#E8E1D2] grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                {order.estimated_completion && (
+                  <div className="p-3.5 bg-[#FAF6EE] rounded-2xl border border-[#E8E1D2]">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#8A9588] block">
+                      Estimated Turnaround
+                    </span>
+                    <span className="font-semibold text-[#1D231E] mt-0.5 block">
+                      {order.estimated_completion}
+                    </span>
+                  </div>
+                )}
+                {(details.delivery_address || details.phone_number || details.phone) && (
+                  <div className="p-3.5 bg-[#FAF6EE] rounded-2xl border border-[#E8E1D2]">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#8A9588] block">
+                      Delivery Destination
+                    </span>
+                    {details.delivery_address && (
+                      <span className="font-medium text-[#1D231E] mt-0.5 block line-clamp-2">
+                        {details.delivery_address}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Close Button */}
+              <div className="pt-2 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setSelectedDetailOrder(null)}
+                  className="px-5 py-2 bg-[#FAF6EE] hover:bg-[#E8E1D2] text-[#1D231E] text-xs font-bold rounded-full transition-colors cursor-pointer"
+                >
+                  Close View
+                </button>
+              </div>
+
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Request Revision Modal Dialog */}
       {revisionModalOrder && (
