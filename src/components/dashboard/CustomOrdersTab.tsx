@@ -23,13 +23,23 @@ import {
   Copy,
   Activity,
   Layers,
-  MessageSquare
+  MessageSquare,
+  RotateCcw,
+  XCircle,
+  History,
+  ChevronDown,
+  ChevronUp,
+  X,
+  AlertTriangle
 } from 'lucide-react';
 import { 
   supabase, 
   fetchUserStitchOrders, 
   SupabaseStitchOrderRow, 
-  acceptCustomerQuote 
+  acceptCustomerQuote,
+  requestQuoteRevision,
+  cancelCustomerOrder,
+  ArchivedQuote
 } from '../../lib/supabase';
 
 interface UserProfile {
@@ -81,8 +91,8 @@ export const getStageIndex = (statusRaw?: string): number => {
   if (s === 'confirmed' || s === 'paid' || s.includes('payment_received')) {
     return 2;
   }
-  // Stage 1: Quoted (Only actual quote ready or awaiting payment)
-  if (s === 'quoted' || s === 'awaiting_payment' || s === 'quote_ready' || s.includes('awaiting')) {
+  // Stage 1: Quoted / Revision Requested (Only actual quote ready, revision requested, or awaiting payment)
+  if (s === 'quoted' || s === 'revision_requested' || s === 'awaiting_payment' || s === 'quote_ready' || s.includes('awaiting')) {
     return 1;
   }
   // Stage 0: Received (fallback default)
@@ -98,6 +108,91 @@ export const CustomOrdersTab: React.FC<CustomOrdersTabProps> = ({ user, onOpenCo
   const [confirmingOrderId, setConfirmingOrderId] = useState<string | number | null>(null);
   const [feedbackMsg, setFeedbackMsg] = useState<{ text: string; type: 'success' | 'info' } | null>(null);
   const [copiedTracking, setCopiedTracking] = useState<string | null>(null);
+
+  // Quote Revision and Cancellation state
+  const [revisionModalOrder, setRevisionModalOrder] = useState<SupabaseStitchOrderRow | null>(null);
+  const [revisionText, setRevisionText] = useState<string>('');
+  const [isSubmittingRevision, setIsSubmittingRevision] = useState<boolean>(false);
+  const [cancelModalOrder, setCancelModalOrder] = useState<SupabaseStitchOrderRow | null>(null);
+  const [isSubmittingCancel, setIsSubmittingCancel] = useState<boolean>(false);
+  const [expandedHistoryOrders, setExpandedHistoryOrders] = useState<Record<string, boolean>>({});
+
+  const toggleOrderHistory = (orderId: string | number) => {
+    const key = String(orderId);
+    setExpandedHistoryOrders((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
+
+  const handleOpenRevision = (order: SupabaseStitchOrderRow) => {
+    setRevisionModalOrder(order);
+    setRevisionText('');
+  };
+
+  const handleSubmitRevision = async () => {
+    if (!revisionModalOrder) return;
+    const targetId = revisionModalOrder.raw_order_id || revisionModalOrder.id;
+    setIsSubmittingRevision(true);
+    try {
+      const res = await requestQuoteRevision(
+        targetId,
+        revisionText,
+        revisionModalOrder.quote,
+        revisionModalOrder.quote_history
+      );
+      if (res.success) {
+        setFeedbackMsg({
+          text: 'Revision requested! Our studio team will review your notes and update your quotation.',
+          type: 'success',
+        });
+        setRevisionModalOrder(null);
+        setRevisionText('');
+        await loadOrders(true);
+      } else {
+        setFeedbackMsg({
+          text: 'Unable to submit revision request. Please try again.',
+          type: 'info',
+        });
+      }
+    } catch (err) {
+      console.error('Error requesting revision:', err);
+    } finally {
+      setIsSubmittingRevision(false);
+      setTimeout(() => setFeedbackMsg(null), 5000);
+    }
+  };
+
+  const handleOpenCancel = (order: SupabaseStitchOrderRow) => {
+    setCancelModalOrder(order);
+  };
+
+  const handleConfirmCancel = async () => {
+    if (!cancelModalOrder) return;
+    const targetId = cancelModalOrder.raw_order_id || cancelModalOrder.id;
+    setIsSubmittingCancel(true);
+    try {
+      const res = await cancelCustomerOrder(targetId, 'Cancelled by customer from dashboard');
+      if (res.success) {
+        setFeedbackMsg({
+          text: 'Order cancelled successfully.',
+          type: 'info',
+        });
+        setCancelModalOrder(null);
+        await loadOrders(true);
+      } else {
+        setFeedbackMsg({
+          text: 'Unable to cancel order. Please try again.',
+          type: 'info',
+        });
+      }
+    } catch (err) {
+      console.error('Error cancelling order:', err);
+    } finally {
+      setIsSubmittingCancel(false);
+      setTimeout(() => setFeedbackMsg(null), 5000);
+    }
+  };
 
   const loadOrders = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -343,6 +438,22 @@ export const CustomOrdersTab: React.FC<CustomOrdersTabProps> = ({ user, onOpenCo
         </span>
       );
     }
+    if (s === 'revision_requested') {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs">
+          <RotateCcw className="w-3.5 h-3.5 text-amber-700" />
+          <span>Revision Requested</span>
+        </span>
+      );
+    }
+    if (s === 'cancelled' || s === 'canceled') {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-600 border border-gray-300">
+          <XCircle className="w-3.5 h-3.5 text-gray-500" />
+          <span className="line-through">Cancelled</span>
+        </span>
+      );
+    }
     if (s === 'quoted') {
       return (
         <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-orange-100 text-orange-800 border border-orange-200">
@@ -536,6 +647,95 @@ export const CustomOrdersTab: React.FC<CustomOrdersTabProps> = ({ user, onOpenCo
                     {getStatusBadge(rawStatus)}
                   </div>
                 </div>
+
+                {/* Cancelled State Banner */}
+                {(rawStatus === 'cancelled' || rawStatus === 'canceled') && (
+                  <div className="p-4 bg-gray-50 border border-gray-200 rounded-2xl flex items-start gap-3">
+                    <XCircle className="w-5 h-5 text-gray-500 shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="text-xs font-bold text-gray-800">
+                        Order Cancelled
+                      </h4>
+                      <p className="text-[11px] text-gray-600 mt-0.5 leading-relaxed">
+                        This order has been cancelled and is no longer active. If you wish to proceed with a new custom kit or stitched keepsake, please feel free to submit a new request anytime.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Revision Requested State Banner */}
+                {rawStatus === 'revision_requested' && (
+                  <div className="p-4 sm:p-5 bg-amber-50/90 border border-amber-300 rounded-2xl space-y-2.5">
+                    <div className="flex items-center gap-2 text-amber-900 font-bold text-xs sm:text-sm">
+                      <RotateCcw className="w-4 h-4 text-amber-700" />
+                      <span>Revision Requested — Studio Artisan Reviewing</span>
+                    </div>
+                    <p className="text-xs text-amber-950 leading-relaxed">
+                      You requested revisions for this quotation. Our studio master is currently reviewing your notes and preparing an updated itemized quote.
+                    </p>
+                    {order.customer_feedback && (
+                      <div className="p-3 bg-white/95 rounded-xl border border-amber-200 text-xs text-amber-900 shadow-2xs">
+                        <span className="font-bold text-[10px] uppercase tracking-wider text-amber-800 block mb-0.5">
+                          Your Feedback / Revision Notes:
+                        </span>
+                        <p className="italic text-[#1D231E]">"{order.customer_feedback}"</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Previous Quotes History Accordion */}
+                {order.quote_history && Array.isArray(order.quote_history) && order.quote_history.length > 0 && (
+                  <div className="bg-[#FAF6EE]/70 rounded-2xl border border-[#E8E1D2] overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => toggleOrderHistory(order.raw_order_id || order.id)}
+                      className="w-full px-4 py-3 flex items-center justify-between text-xs font-bold text-[#1D231E] hover:bg-[#FAF6EE] transition-colors cursor-pointer"
+                    >
+                      <span className="flex items-center gap-2">
+                        <History className="w-4 h-4 text-[#E06C38]" />
+                        <span>Previous Quote Versions ({order.quote_history.length})</span>
+                      </span>
+                      <span className="text-[#5A6659] text-[11px] flex items-center gap-1">
+                        {expandedHistoryOrders[String(order.raw_order_id || order.id)] ? 'Hide History' : 'View History'}
+                        {expandedHistoryOrders[String(order.raw_order_id || order.id)] ? (
+                          <ChevronUp className="w-3.5 h-3.5" />
+                        ) : (
+                          <ChevronDown className="w-3.5 h-3.5" />
+                        )}
+                      </span>
+                    </button>
+
+                    {expandedHistoryOrders[String(order.raw_order_id || order.id)] && (
+                      <div className="p-4 pt-0 space-y-3 border-t border-[#E8E1D2]/80 divide-y divide-[#E8E1D2]">
+                        {order.quote_history.map((prevQuote: ArchivedQuote, qIdx: number) => (
+                          <div key={qIdx} className="pt-3 first:pt-0 space-y-2 text-xs">
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-[#5A6659] text-[11px]">
+                                Version #{qIdx + 1}
+                                {prevQuote.superseded_at && ` • ${formatDate(prevQuote.superseded_at)}`}
+                              </span>
+                              <span className="font-bold text-[#1D231E] font-mono">
+                                ${(Number(prevQuote.total_amount) || Number(prevQuote.quoted_price) || 0).toFixed(2)}
+                              </span>
+                            </div>
+                            {prevQuote.reason && (
+                              <div className="bg-amber-50/80 p-2.5 rounded-xl border border-amber-200 text-amber-900 text-[11px]">
+                                <span className="font-semibold">Superseded Reason:</span> "{prevQuote.reason}"
+                              </div>
+                            )}
+                            {prevQuote.line_items && prevQuote.line_items.length > 0 && (
+                              <p className="text-[11px] text-[#6B7869]">
+                                {prevQuote.line_items.length} itemized line {prevQuote.line_items.length === 1 ? 'item' : 'items'}
+                                {prevQuote.delivery_charge !== undefined && ` + $${Number(prevQuote.delivery_charge).toFixed(2)} delivery`}
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* 7-Stage Order Progress Tracker Stepper */}
                 <div className="py-2">
@@ -954,23 +1154,46 @@ export const CustomOrdersTab: React.FC<CustomOrdersTabProps> = ({ user, onOpenCo
                         <span>Includes premium DMC floss, Zweigart Aida & tracked shipping.</span>
                       </p>
                       
-                      <button
-                        onClick={() => handleConfirmQuote(order)}
-                        disabled={confirmingOrderId === (order.raw_order_id || order.id)}
-                        className="px-6 py-3 bg-[#1D231E] hover:bg-[#323D34] text-white text-xs font-bold rounded-full transition-all cursor-pointer flex items-center gap-2 shadow-sm disabled:opacity-50 shrink-0"
-                      >
-                        {confirmingOrderId === (order.raw_order_id || order.id) ? (
-                          <>
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            <span>Confirming Order...</span>
-                          </>
-                        ) : (
-                          <>
-                            <Check className="w-3.5 h-3.5 text-[#E06C38]" />
-                            <span>Confirm Order</span>
-                          </>
-                        )}
-                      </button>
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        {/* Request Revision Button */}
+                        <button
+                          type="button"
+                          onClick={() => handleOpenRevision(order)}
+                          className="px-4 py-2.5 bg-white hover:bg-[#FAF6EE] text-[#1D231E] border border-[#1D231E]/20 text-xs font-bold rounded-full transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs shrink-0"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5 text-amber-600" />
+                          <span>Request Revision</span>
+                        </button>
+
+                        {/* Cancel Order Button */}
+                        <button
+                          type="button"
+                          onClick={() => handleOpenCancel(order)}
+                          className="px-4 py-2.5 bg-transparent hover:bg-rose-50 text-rose-700 hover:text-rose-800 border border-rose-200 text-xs font-semibold rounded-full transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
+                        >
+                          <XCircle className="w-3.5 h-3.5 text-rose-500" />
+                          <span>Cancel Order</span>
+                        </button>
+
+                        {/* Confirm Order Button */}
+                        <button
+                          onClick={() => handleConfirmQuote(order)}
+                          disabled={confirmingOrderId === (order.raw_order_id || order.id)}
+                          className="px-6 py-2.5 bg-[#1D231E] hover:bg-[#323D34] text-white text-xs font-bold rounded-full transition-all cursor-pointer flex items-center gap-2 shadow-sm disabled:opacity-50 shrink-0"
+                        >
+                          {confirmingOrderId === (order.raw_order_id || order.id) ? (
+                            <>
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              <span>Confirming Order...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Check className="w-3.5 h-3.5 text-[#E06C38]" />
+                              <span>Confirm Order</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1071,6 +1294,133 @@ export const CustomOrdersTab: React.FC<CustomOrdersTabProps> = ({ user, onOpenCo
               <span>Start Custom Order Request</span>
             </button>
           )}
+        </div>
+      )}
+
+      {/* Request Revision Modal Dialog */}
+      {revisionModalOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fadeIn">
+          <div className="bg-white rounded-3xl border border-[#E8E1D2] max-w-lg w-full p-6 sm:p-7 shadow-2xl space-y-5 animate-scaleUp">
+            <div className="flex items-start justify-between gap-3 border-b border-[#E8E1D2] pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-700 flex items-center justify-center shrink-0">
+                  <RotateCcw className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-[#1D231E]">Request Quote Revision</h3>
+                  <p className="text-xs text-[#6B7869]">
+                    Order #{String(revisionModalOrder.raw_order_id || revisionModalOrder.id).replace('order_', '').slice(-8)}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRevisionModalOrder(null)}
+                disabled={isSubmittingRevision}
+                className="p-2 text-[#8A9588] hover:text-[#1D231E] hover:bg-[#FAF6EE] rounded-full transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <label className="block text-xs font-bold text-[#1D231E]">
+                Let us know what you'd like changed (price, materials, size, etc.)
+              </label>
+              <textarea
+                value={revisionText}
+                onChange={(e) => setRevisionText(e.target.value)}
+                placeholder="e.g. Could we reduce the canvas size, adjust thread skein counts, or modify the shipping arrangement?"
+                rows={4}
+                disabled={isSubmittingRevision}
+                className="w-full px-4 py-3 rounded-2xl bg-[#FAF6EE]/60 border border-[#D5CDBC] text-xs text-[#1D231E] placeholder:text-[#8A9588] focus:outline-none focus:ring-2 focus:ring-[#E06C38] focus:border-transparent transition-all resize-none"
+              />
+              <p className="text-[11px] text-[#8A9588] leading-relaxed">
+                Submitting this request will archive the current quote and notify our studio artisans to adjust your order requirements.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-[#E8E1D2]">
+              <button
+                type="button"
+                onClick={() => setRevisionModalOrder(null)}
+                disabled={isSubmittingRevision}
+                className="px-4 py-2 text-xs font-semibold text-[#5A6659] hover:text-[#1D231E] rounded-full transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmitRevision}
+                disabled={isSubmittingRevision}
+                className="px-5 py-2.5 bg-[#E06C38] hover:bg-[#d05c28] text-white text-xs font-bold rounded-full transition-all cursor-pointer flex items-center gap-1.5 shadow-xs disabled:opacity-50"
+              >
+                {isSubmittingRevision ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Submitting Request...</span>
+                  </>
+                ) : (
+                  <>
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Submit Revision Request</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cancel Order Confirmation Dialog */}
+      {cancelModalOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fadeIn">
+          <div className="bg-white rounded-3xl border border-rose-200 max-w-md w-full p-6 sm:p-7 shadow-2xl space-y-5 animate-scaleUp">
+            <div className="flex items-start gap-3.5">
+              <div className="w-11 h-11 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-[#1D231E]">Cancel Order Confirmation</h3>
+                <p className="text-xs text-rose-800 font-medium mt-1">
+                  Are you sure you want to cancel this order? This can't be undone.
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-[#6B7869] leading-relaxed">
+              Cancelling will permanently close this custom order request and no further quotes or production will take place.
+            </p>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-[#E8E1D2]">
+              <button
+                type="button"
+                onClick={() => setCancelModalOrder(null)}
+                disabled={isSubmittingCancel}
+                className="px-4 py-2 text-xs font-semibold text-[#5A6659] hover:text-[#1D231E] rounded-full transition-colors cursor-pointer"
+              >
+                Keep Order
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmCancel}
+                disabled={isSubmittingCancel}
+                className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-full transition-all cursor-pointer flex items-center gap-1.5 shadow-xs disabled:opacity-50"
+              >
+                {isSubmittingCancel ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Cancelling Order...</span>
+                  </>
+                ) : (
+                  <>
+                    <XCircle className="w-3.5 h-3.5" />
+                    <span>Yes, Cancel Order</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

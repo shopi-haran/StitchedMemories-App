@@ -698,6 +698,13 @@ export interface AdminQuoteData {
   item_price?: number; // legacy fallback
 }
 
+export interface ArchivedQuote extends AdminQuoteData {
+  superseded_at?: string;
+  reason?: string;
+  quoted_price?: number;
+  [key: string]: any;
+}
+
 export interface SupabaseStitchOrderRow {
   id: string | number;
   raw_order_id?: string | number;
@@ -705,10 +712,12 @@ export interface SupabaseStitchOrderRow {
   title?: string;
   title_name?: string;
   image_url?: string;
-  status: string; // 'pending_quote' | 'quoted' | 'awaiting_payment' | 'confirmed' | 'in_progress' | 'in_production' | 'quality_check' | 'shipped' | 'delivered'
+  status: string; // 'pending_quote' | 'quoted' | 'revision_requested' | 'awaiting_payment' | 'confirmed' | 'in_progress' | 'in_production' | 'quality_check' | 'shipped' | 'delivered' | 'cancelled'
   fulfillment_status?: string;
   payment_status?: string;
   quote?: AdminQuoteData;
+  quote_history?: ArchivedQuote[];
+  customer_feedback?: string;
   item_price?: number;
   delivery_charge?: number;
   quoted_price?: number;
@@ -773,12 +782,25 @@ export async function fetchUserStitchOrders(
         else if (row.order_type === 'custom_stitched') title = `Custom Stitched Keepsake - ${details.size || 'Standard'}`;
         else if (row.order_type) title = `${row.order_type.replace(/_/g, ' ')}`;
 
+        const quoteHistoryRaw = row.quote_history || details.quote_history || [];
+        const quoteHistoryArr: ArchivedQuote[] = Array.isArray(quoteHistoryRaw)
+          ? quoteHistoryRaw
+          : (typeof quoteHistoryRaw === 'string' ? (() => { try { return JSON.parse(quoteHistoryRaw); } catch { return []; } })() : []);
+
+        const customerFeedbackStr = row.customer_feedback || details.customer_feedback || '';
+
         const rawStatus = row.fulfillment_status || row.status || 'pending_quote';
         let defaultNote = '';
         if (rawStatus === 'pending_quote' || rawStatus === 'received') {
           defaultNote = "Order received — we'll confirm final pricing and delivery charges in your dashboard within 24-48 hours.";
         } else if (rawStatus === 'quoted') {
           defaultNote = quoteObj?.admin_notes || row.admin_notes || "Your custom quote is ready! Review the quote details and click Confirm Order to proceed.";
+        } else if (rawStatus === 'revision_requested') {
+          defaultNote = customerFeedbackStr 
+            ? `Revision requested: "${customerFeedbackStr}" — Studio artisan is reviewing your notes.`
+            : "Revision requested — Studio artisan is reviewing your requested modifications.";
+        } else if (rawStatus === 'cancelled' || rawStatus === 'canceled') {
+          defaultNote = "This order has been cancelled.";
         } else if (rawStatus === 'awaiting_payment') {
           defaultNote = "Quote confirmed. Awaiting payment processing before crafting begins.";
         } else if (rawStatus === 'confirmed') {
@@ -807,6 +829,8 @@ export async function fetchUserStitchOrders(
           fulfillment_status: rawStatus,
           payment_status: row.payment_status || details.payment_status || 'pending_quote',
           quote: quoteObj,
+          quote_history: quoteHistoryArr,
+          customer_feedback: customerFeedbackStr,
           item_price: itemPriceVal,
           delivery_charge: deliveryChargeVal,
           quoted_price: totalAmountVal > 0 ? totalAmountVal : undefined,
@@ -884,6 +908,13 @@ export async function fetchAllAdminOrders(): Promise<SupabaseStitchOrderRow[]> {
         else if (row.order_type === 'custom_stitched') title = `Custom Stitched Keepsake - ${details.size || 'Standard'}`;
         else if (row.order_type) title = `${row.order_type.replace(/_/g, ' ')}`;
 
+        const quoteHistoryRaw = row.quote_history || details.quote_history || [];
+        const quoteHistoryArr: ArchivedQuote[] = Array.isArray(quoteHistoryRaw)
+          ? quoteHistoryRaw
+          : (typeof quoteHistoryRaw === 'string' ? (() => { try { return JSON.parse(quoteHistoryRaw); } catch { return []; } })() : []);
+
+        const customerFeedbackStr = row.customer_feedback || details.customer_feedback || '';
+
         const rawStatus = row.fulfillment_status || 'pending_quote';
 
         // Match customer profile
@@ -920,6 +951,8 @@ export async function fetchAllAdminOrders(): Promise<SupabaseStitchOrderRow[]> {
           fulfillment_status: rawStatus,
           payment_status: row.payment_status || details.payment_status || 'pending_quote',
           quote: quoteObj,
+          quote_history: quoteHistoryArr,
+          customer_feedback: customerFeedbackStr,
           item_price: itemPriceVal,
           delivery_charge: deliveryChargeVal,
           quoted_price: totalAmountVal > 0 ? totalAmountVal : undefined,
@@ -1159,6 +1192,126 @@ export async function acceptCustomerQuote(orderId: string | number): Promise<{ s
     payment_status: 'awaiting_payment',
     status_note: 'Quote confirmed by customer. Awaiting payment confirmation before crafting begins.',
   });
+}
+
+/**
+ * Customer requests revision on quote:
+ * - Moves current quote object into quote_history (appending it as an array entry with superseded_at timestamp and reason)
+ * - Saves customer's message into customer_feedback
+ * - Sets fulfillment_status = 'revision_requested' and status = 'revision_requested'
+ */
+export async function requestQuoteRevision(
+  orderId: string | number,
+  feedback: string,
+  currentQuote?: AdminQuoteData,
+  existingHistory?: ArchivedQuote[]
+): Promise<{ success: boolean; data?: any; error?: any }> {
+  try {
+    const rawId = typeof orderId === 'string' && orderId.startsWith('order_')
+      ? orderId.replace('order_', '')
+      : orderId;
+
+    const trimmedFeedback = (feedback || '').trim();
+    const history: ArchivedQuote[] = Array.isArray(existingHistory) ? [...existingHistory] : [];
+
+    if (currentQuote && (currentQuote.line_items?.length || currentQuote.total_amount || currentQuote.item_price)) {
+      const archived: ArchivedQuote = {
+        ...currentQuote,
+        superseded_at: new Date().toISOString(),
+        reason: trimmedFeedback || 'Customer requested quote adjustment',
+      };
+      history.push(archived);
+    }
+
+    const payload: Record<string, any> = {
+      fulfillment_status: 'revision_requested',
+      status: 'revision_requested',
+      customer_feedback: trimmedFeedback,
+      quote_history: history,
+      status_note: trimmedFeedback
+        ? `Revision requested: "${trimmedFeedback}"`
+        : 'Revision requested by customer. Studio is preparing an updated quotation.',
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data, error } = await supabase
+      .from('orders')
+      .update(payload)
+      .eq('id', rawId)
+      .select();
+
+    if (error) {
+      console.error('[requestQuoteRevision] Supabase update error:', error);
+      // Fallback: update status via updateAdminOrderStatus
+      return await updateAdminOrderStatus(orderId, {
+        fulfillment_status: 'revision_requested',
+        status_note: `Revision requested: "${trimmedFeedback}"`,
+      });
+    }
+
+    try {
+      window.dispatchEvent(
+        new CustomEvent('orderUpdated', {
+          detail: { orderId, status: 'revision_requested', feedback: trimmedFeedback },
+        })
+      );
+    } catch {}
+
+    return { success: true, data };
+  } catch (err: any) {
+    console.error('[requestQuoteRevision] Exception:', err);
+    return { success: false, error: err };
+  }
+}
+
+/**
+ * Customer cancels order:
+ * - Sets fulfillment_status = 'cancelled' and status = 'cancelled'
+ * - This is final.
+ */
+export async function cancelCustomerOrder(
+  orderId: string | number,
+  reason?: string
+): Promise<{ success: boolean; data?: any; error?: any }> {
+  try {
+    const rawId = typeof orderId === 'string' && orderId.startsWith('order_')
+      ? orderId.replace('order_', '')
+      : orderId;
+
+    const payload: Record<string, any> = {
+      fulfillment_status: 'cancelled',
+      status: 'cancelled',
+      status_note: reason || 'Order was cancelled by customer.',
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data, error } = await supabase
+      .from('orders')
+      .update(payload)
+      .eq('id', rawId)
+      .select();
+
+    if (error) {
+      console.error('[cancelCustomerOrder] Supabase update error:', error);
+      return await updateAdminOrderStatus(orderId, {
+        fulfillment_status: 'cancelled',
+        status_note: reason || 'Order was cancelled by customer.',
+      });
+    }
+
+    try {
+      window.dispatchEvent(
+        new CustomEvent('orderUpdated', {
+          detail: { orderId, status: 'cancelled' },
+        })
+      );
+    } catch {}
+
+    return { success: true, data };
+  } catch (err: any) {
+    console.error('[cancelCustomerOrder] Exception:', err);
+    return { success: false, error: err };
+  }
 }
 
 /**

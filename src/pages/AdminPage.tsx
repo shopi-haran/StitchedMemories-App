@@ -36,7 +36,10 @@ import {
   Tag,
   BookOpen,
   Plus,
-  Trash2
+  Trash2,
+  RotateCcw,
+  History,
+  AlertTriangle
 } from 'lucide-react';
 import {
   fetchAllAdminOrders,
@@ -181,11 +184,12 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     };
   }, [loadData]);
 
-  // Derived Pending Quotes list
+  // Derived Pending Quotes list (includes new requests and revision requests)
   const pendingQuotesOrders = useMemo(() => {
-    return orders.filter(
-      (o) => o.fulfillment_status === 'pending_quote' || o.status === 'pending_quote' || o.status === 'received'
-    );
+    return orders.filter((o) => {
+      const st = (o.fulfillment_status || o.status || '').toLowerCase();
+      return st === 'pending_quote' || st === 'received' || st === 'revision_requested';
+    });
   }, [orders]);
 
   // Derived filtered orders for ALL ORDERS tab
@@ -534,6 +538,19 @@ export const AdminPage: React.FC<AdminPageProps> = ({
             <Clock className="w-3.5 h-3.5 text-amber-700" /> Pending Quote
           </span>
         );
+      case 'revision_requested':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300 animate-pulse">
+            <RotateCcw className="w-3.5 h-3.5 text-amber-700" /> Revision Requested
+          </span>
+        );
+      case 'cancelled':
+      case 'canceled':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-500 border border-gray-300">
+            <X className="w-3.5 h-3.5 text-gray-400" /> Cancelled
+          </span>
+        );
       case 'quoted':
         return (
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-900 border border-blue-300">
@@ -775,12 +792,20 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                       Pending Quote Requests
                     </h2>
                     <p className="text-xs text-[#1D231E]/60">
-                      Requests awaiting workshop estimation, item pricing, and delivery calculation.
+                      Requests awaiting initial workshop estimation or revised pricing based on customer requests.
                     </p>
                   </div>
-                  <div className="text-sm font-medium text-[#1D231E]/80 bg-[#FAF6EE] px-4 py-2 rounded-xl border border-[#1D231E]/5">
-                    Total Pending:{' '}
-                    <span className="font-bold text-[#E06C38]">{pendingQuotesOrders.length}</span>
+                  <div className="flex items-center gap-2">
+                    {pendingQuotesOrders.some(o => (o.fulfillment_status || o.status) === 'revision_requested') && (
+                      <span className="text-xs font-bold text-amber-900 bg-amber-100 px-3 py-1.5 rounded-xl border border-amber-300 flex items-center gap-1.5">
+                        <RotateCcw className="w-3.5 h-3.5 text-amber-700" />
+                        {pendingQuotesOrders.filter(o => (o.fulfillment_status || o.status) === 'revision_requested').length} Revision{pendingQuotesOrders.filter(o => (o.fulfillment_status || o.status) === 'revision_requested').length > 1 ? 's' : ''} Needed
+                      </span>
+                    )}
+                    <div className="text-sm font-medium text-[#1D231E]/80 bg-[#FAF6EE] px-4 py-2 rounded-xl border border-[#1D231E]/5">
+                      Total Pending:{' '}
+                      <span className="font-bold text-[#E06C38]">{pendingQuotesOrders.length}</span>
+                    </div>
                   </div>
                 </div>
 
@@ -801,14 +826,21 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                     {pendingQuotesOrders.map((order) => {
                       const details = order.request_details || {};
                       const photoUrl = order.image_url || details.photo_url || details.pattern_result_url;
+                      const isRevision = (order.fulfillment_status || order.status) === 'revision_requested';
 
                       return (
                         <div
                           key={order.id}
-                          className="bg-white rounded-2xl border border-[#1D231E]/10 shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col lg:flex-row"
+                          className={`bg-white rounded-2xl border transition-all overflow-hidden flex flex-col lg:flex-row ${
+                            isRevision
+                              ? 'border-amber-400 bg-amber-50/10 shadow-md ring-1 ring-amber-400/40'
+                              : 'border-[#1D231E]/10 shadow-sm hover:shadow-md'
+                          }`}
                         >
                           {/* Photo Column */}
-                          <div className="lg:w-72 bg-[#FAF6EE] p-5 flex flex-col items-center justify-center border-b lg:border-b-0 lg:border-r border-[#1D231E]/10">
+                          <div className={`lg:w-72 p-5 flex flex-col items-center justify-center border-b lg:border-b-0 lg:border-r ${
+                            isRevision ? 'bg-amber-50/40 border-amber-200' : 'bg-[#FAF6EE] border-[#1D231E]/10'
+                          }`}>
                             {photoUrl ? (
                               <div className="relative group w-full aspect-square rounded-xl overflow-hidden bg-black/5 border border-[#1D231E]/10">
                                 <img
@@ -880,11 +912,42 @@ export const AdminPage: React.FC<AdminPageProps> = ({
 
                                 <button
                                   onClick={() => handleOpenQuoteForm(order)}
-                                  className="px-5 py-2.5 rounded-xl bg-[#E06C38] hover:bg-[#c95927] text-white text-sm font-semibold shadow-md transition-colors flex items-center gap-2"
+                                  className={`px-5 py-2.5 rounded-xl text-white text-sm font-semibold shadow-md transition-all flex items-center gap-2 cursor-pointer ${
+                                    isRevision
+                                      ? 'bg-amber-600 hover:bg-amber-700 ring-2 ring-amber-400/40'
+                                      : 'bg-[#E06C38] hover:bg-[#c95927]'
+                                  }`}
                                 >
-                                  <DollarSign className="w-4 h-4" /> Set Quote & Price
+                                  {isRevision ? (
+                                    <>
+                                      <RotateCcw className="w-4 h-4" /> Re-Submit Updated Quote
+                                    </>
+                                  ) : (
+                                    <>
+                                      <DollarSign className="w-4 h-4" /> Set Quote & Price
+                                    </>
+                                  )}
                                 </button>
                               </div>
+
+                              {/* Customer Revision Feedback Banner */}
+                              {isRevision && (
+                                <div className="mb-4 p-4 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 space-y-1.5 shadow-2xs">
+                                  <div className="flex items-center gap-2 font-bold text-xs text-amber-900">
+                                    <RotateCcw className="w-4 h-4 text-amber-700 animate-spin" />
+                                    <span>Customer Requested Quote Revision</span>
+                                  </div>
+                                  {order.customer_feedback ? (
+                                    <p className="text-xs text-amber-900 font-medium leading-relaxed pl-6">
+                                      <span className="font-bold">Customer Feedback:</span> "{order.customer_feedback}"
+                                    </p>
+                                  ) : (
+                                    <p className="text-xs text-amber-800 italic pl-6">
+                                      Customer requested an update to the materials, thread skeins, or pricing.
+                                    </p>
+                                  )}
+                                </div>
+                              )}
 
                               {/* Customer Profile Card */}
                               <div className="mb-5 bg-[#FAF6EE] rounded-xl p-3.5 border border-[#1D231E]/5 flex flex-wrap items-center justify-between gap-3">
@@ -1065,6 +1128,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                       >
                         <option value="all">All Statuses</option>
                         <option value="pending_quote">Pending Quote</option>
+                        <option value="revision_requested">Revision Requested</option>
                         <option value="quoted">Quoted</option>
                         <option value="awaiting_payment">Awaiting Payment</option>
                         <option value="confirmed">Confirmed</option>
@@ -1072,6 +1136,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                         <option value="quality_check">Quality Check</option>
                         <option value="shipped">Shipped</option>
                         <option value="delivered">Delivered</option>
+                        <option value="cancelled">Cancelled</option>
                       </select>
                     </div>
 
@@ -1250,17 +1315,21 @@ export const AdminPage: React.FC<AdminPageProps> = ({
 
                                 <td className="py-4 px-4 align-top text-right" onClick={(e) => e.stopPropagation()}>
                                   <div className="flex items-center justify-end gap-2">
-                                    {order.fulfillment_status === 'pending_quote' && (
+                                    {(order.fulfillment_status === 'pending_quote' || order.fulfillment_status === 'revision_requested') && (
                                       <button
                                         onClick={() => handleOpenQuoteForm(order)}
-                                        className="px-3 py-1.5 rounded-lg bg-[#E06C38] hover:bg-[#c95927] text-white text-xs font-semibold shadow-sm transition-colors"
+                                        className={`px-3 py-1.5 rounded-lg text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer ${
+                                          order.fulfillment_status === 'revision_requested'
+                                            ? 'bg-amber-600 hover:bg-amber-700'
+                                            : 'bg-[#E06C38] hover:bg-[#c95927]'
+                                        }`}
                                       >
-                                        Quote
+                                        {order.fulfillment_status === 'revision_requested' ? 'Re-Quote' : 'Quote'}
                                       </button>
                                     )}
                                     <button
                                       onClick={() => handleOpenOrderEdit(order)}
-                                      className="px-3 py-1.5 rounded-lg bg-[#FAF6EE] hover:bg-[#FAF6EE]/80 border border-[#1D231E]/15 text-[#1D231E] text-xs font-semibold transition-colors flex items-center gap-1"
+                                      className="px-3 py-1.5 rounded-lg bg-[#FAF6EE] hover:bg-[#FAF6EE]/80 border border-[#1D231E]/15 text-[#1D231E] text-xs font-semibold transition-colors flex items-center gap-1 cursor-pointer"
                                     >
                                       <Sliders className="w-3.5 h-3.5" /> Manage
                                     </button>
@@ -1474,6 +1543,30 @@ export const AdminPage: React.FC<AdminPageProps> = ({
             </div>
 
             <form onSubmit={handleSaveQuote} className="space-y-6">
+              {/* Customer Revision Feedback Prompt if revision requested */}
+              {(selectedQuoteOrder.fulfillment_status === 'revision_requested' || selectedQuoteOrder.customer_feedback) && (
+                <div className="p-4 bg-amber-50 rounded-2xl border border-amber-300 text-amber-950 space-y-1.5 shadow-2xs">
+                  <div className="flex items-center gap-2 font-bold text-xs text-amber-900">
+                    <RotateCcw className="w-4 h-4 text-amber-700" />
+                    <span>Customer Revision Request</span>
+                  </div>
+                  {selectedQuoteOrder.customer_feedback ? (
+                    <p className="text-xs text-amber-900 font-medium leading-relaxed">
+                      "{selectedQuoteOrder.customer_feedback}"
+                    </p>
+                  ) : (
+                    <p className="text-xs text-amber-800 italic">
+                      Customer requested adjustments to the price or materials.
+                    </p>
+                  )}
+                  {selectedQuoteOrder.quote_history && selectedQuoteOrder.quote_history.length > 0 && (
+                    <p className="text-[11px] text-amber-800/80 pt-1 border-t border-amber-200">
+                      Previous quote of ${(selectedQuoteOrder.quote_history[selectedQuoteOrder.quote_history.length - 1].total_amount || 0).toFixed(2)} is archived in history.
+                    </p>
+                  )}
+                </div>
+              )}
+
               {/* Customer summary block */}
               <div className="bg-[#FAF6EE] p-4 rounded-2xl border border-[#1D231E]/5 text-xs space-y-1.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1881,8 +1974,17 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                     </div>
                   )}
 
+                  {selectedOrderForEdit.customer_feedback && (
+                    <div className="p-3 bg-amber-50 rounded-xl border border-amber-300 text-amber-950 space-y-1">
+                      <span className="font-bold flex items-center gap-1 text-[11px] text-amber-900">
+                        <RotateCcw className="w-3.5 h-3.5 text-amber-700" /> Customer Revision Feedback:
+                      </span>
+                      <p className="font-medium text-[11px] text-amber-950">"{selectedOrderForEdit.customer_feedback}"</p>
+                    </div>
+                  )}
+
                   {editNotes && (
-                    <div className="p-2.5 bg-amber-50 rounded-xl border border-amber-200 text-amber-950">
+                    <div className="p-2.5 bg-amber-50/60 rounded-xl border border-amber-200 text-amber-950">
                       <span className="font-bold flex items-center gap-1 text-[11px] text-amber-800">
                         <MessageSquare className="w-3 h-3 text-amber-700" /> Customer Instructions:
                       </span>

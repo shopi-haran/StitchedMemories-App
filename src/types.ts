@@ -105,3 +105,10 @@ export interface OrderQuoteData {
   quoted_at?: string;
   item_price?: number; // for legacy backward-compatibility
 }
+
+export interface ArchivedQuote extends OrderQuoteData {
+  superseded_at?: string;
+  reason?: string;
+  quoted_price?: number;
+  [key: string]: any;
+}
