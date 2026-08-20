@@ -143,7 +143,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
   useEffect(() => {
     loadData();
 
-    // Setup real-time postgres changes subscription on orders & stitch_orders
+    // Setup real-time postgres changes subscription on orders
     const ordersChannel = supabase
       .channel('admin_realtime_orders')
       .on(
@@ -151,14 +151,6 @@ export const AdminPage: React.FC<AdminPageProps> = ({
         { event: '*', schema: 'public', table: 'orders' },
         (payload) => {
           console.log('[Admin Realtime] orders change detected:', payload);
-          loadData(true);
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'stitch_orders' },
-        (payload) => {
-          console.log('[Admin Realtime] stitch_orders change detected:', payload);
           loadData(true);
         }
       )

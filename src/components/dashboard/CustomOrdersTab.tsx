@@ -219,15 +219,6 @@ export const CustomOrdersTab: React.FC<CustomOrdersTabProps> = ({ user, onOpenCo
         },
         handleOrderRecordChange
       )
-      .on(
-        'postgres_changes',
-        { 
-          event: '*', 
-          schema: 'public', 
-          table: 'stitch_orders' 
-        },
-        () => { loadOrders(true); }
-      )
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           setIsRealtimeActive(true);

@@ -594,7 +594,7 @@ export interface CreateOrderRequestParams {
     size?: string;
     color_count?: number | string;
     stitch_count?: number | string | null;
-    delivery_address: string;
+    delivery_address?: string;
     customer_notes?: string;
     phone?: string;
     product_style?: string;
@@ -663,31 +663,6 @@ export async function createOrderRequest(params: CreateOrderRequestParams): Prom
     }
 
     console.log('[createOrderRequest] Order successfully saved to Supabase orders:', data);
-
-    // Also mirror to stitch_orders for real-time tracking tabs
-    try {
-      let orderTitle = 'Custom Quote Request';
-      if (params.orderType === 'custom_kit_converter') {
-        orderTitle = `Converter Custom Kit (${params.requestDetails.size || 'Standard'})`;
-      } else if (params.orderType === 'custom_kit_assisted') {
-        orderTitle = `Assisted Custom Kit (${params.requestDetails.size || 'Standard'})`;
-      } else if (params.orderType === 'custom_stitched') {
-        orderTitle = `Custom Hand-Stitched Keepsake (${params.requestDetails.size || 'Standard'})`;
-      }
-
-      await supabase.from('stitch_orders').insert([
-        {
-          user_id: effectiveUserId,
-          title: orderTitle,
-          status: 'received',
-          status_note: "Order received — we'll confirm final pricing and delivery charges in your dashboard within 24-48 hours.",
-          image_url: params.requestDetails.photo_url || params.requestDetails.pattern_result_url || '',
-          created_at: new Date().toISOString(),
-        }
-      ]);
-    } catch (mirrorErr) {
-      console.warn('[createOrderRequest] stitch_orders mirror notice:', mirrorErr);
-    }
 
     try {
       window.dispatchEvent(new CustomEvent('orderCreated', { detail: { orderType: params.orderType } }));
@@ -965,36 +940,6 @@ export async function fetchAllAdminOrders(): Promise<SupabaseStitchOrderRow[]> {
     }
   }
 
-  // Also query stitch_orders table for legacy items
-  try {
-    const { data: stitchRows, error: stitchErr } = await supabase
-      .from('stitch_orders')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (!stitchErr && stitchRows && Array.isArray(stitchRows)) {
-      for (const item of stitchRows) {
-        if (!seenIds.has(String(item.id)) && !seenIds.has(`order_${item.id}`)) {
-          const userKey = String(item.user_id || '').toLowerCase();
-          const matchedProfile = profileMap.get(userKey);
-
-          allResults.push({
-            ...item,
-            raw_order_id: item.id,
-            fulfillment_status: item.status || 'received',
-            customer_name: matchedProfile?.display_name || matchedProfile?.name || (item.user_id?.includes('@') ? item.user_id.split('@')[0] : 'Customer'),
-            customer_email: matchedProfile?.email || (item.user_id?.includes('@') ? item.user_id : ''),
-            customer_tier: getEffectiveTier(matchedProfile),
-            customer_tier_label: getEffectiveTierLabel(matchedProfile),
-            customer_avatar: matchedProfile?.avatar_url,
-          });
-        }
-      }
-    }
-  } catch (err: any) {
-    console.warn('[fetchAllAdminOrders] Notice fetching admin stitch_orders:', err?.message || err);
-  }
-
   allResults.sort((a, b) => {
     const timeA = new Date(a.created_at || 0).getTime();
     const timeB = new Date(b.created_at || 0).getTime();
@@ -1008,7 +953,7 @@ export async function fetchAllAdminOrders(): Promise<SupabaseStitchOrderRow[]> {
  * Submits pricing quote for an order:
  *  - updates quote jsonb field with item_price, delivery_charge, total_amount, admin_notes
  *  - sets fulfillment_status = 'quoted'
- *  - writes directly to Supabase orders table and mirrors to stitch_orders
+ *  - writes directly to Supabase orders table
  */
 export async function submitAdminQuote(
   orderId: string | number,
@@ -1046,14 +991,26 @@ export async function submitAdminQuote(
       updated_at: new Date().toISOString(),
     };
 
-    const { error: orderError } = await supabase
+    const updateResponse = await supabase
       .from('orders')
       .update(payload)
-      .eq('id', rawId);
+      .eq('id', rawId)
+      .select();
 
-    if (orderError) {
-      console.error('[submitAdminQuote] Supabase orders update error:', orderError);
-      return { success: false, error: orderError };
+    console.log('[submitAdminQuote] Full Supabase Response:', {
+      orderId,
+      rawId,
+      payload,
+      data: updateResponse.data,
+      error: updateResponse.error,
+      status: updateResponse.status,
+      statusText: updateResponse.statusText,
+      count: updateResponse.count,
+    });
+
+    if (updateResponse.error) {
+      console.error('[submitAdminQuote] Supabase orders update error:', updateResponse.error);
+      return { success: false, error: updateResponse.error };
     }
 
     // Trigger local events
@@ -1177,27 +1134,19 @@ export async function createCustomStitchOrder(params: {
   estimatedPrice?: number;
   sourceImageUrl?: string;
 }): Promise<boolean> {
-  const targetUserId = params.userId || params.userEmail;
-  try {
-    const { error } = await supabase.from('stitch_orders').insert([
-      {
-        user_id: targetUserId,
-        title: params.title,
-        status: 'received',
-        status_note: "Order received — we'll confirm final pricing and delivery charges in your dashboard within 24-48 hours.",
-        image_url: params.sourceImageUrl || '',
-        created_at: new Date().toISOString(),
-      },
-    ]);
-
-    if (error) {
-      console.warn('Supabase stitch_orders insert notice:', error);
-    }
-  } catch (err) {
-    console.error('Error inserting into stitch_orders:', err);
-  }
-
-  return true;
+  const res = await createOrderRequest({
+    userId: params.userId,
+    userEmail: params.userEmail,
+    orderType: 'custom_stitched',
+    requestDetails: {
+      title: params.title,
+      notes: params.description,
+      photo_url: params.sourceImageUrl,
+      customer_name: params.customerName,
+      customer_email: params.userEmail,
+    },
+  });
+  return res.success;
 }
 
 export interface SupabaseProfileRow {
