@@ -221,6 +221,26 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
         ? `${pattern.physicalWidthInches}" × ${pattern.physicalHeightInches}" (${pattern.widthStitches} × ${pattern.heightStitches} sts, ${fabricCount}ct Aida)`
         : `${gridWidth} stitches, ${fabricCount}ct Aida`;
 
+      // Extract thread requirements from pattern floss list for admin quoting
+      const threadRequirements = pattern?.flossList?.map((floss) => ({
+        dmc_code: String(floss.dmc?.code || '').trim(),
+        color_name: floss.dmc?.name || `DMC ${floss.dmc?.code || ''}`,
+        hex: floss.dmc?.hex || '#888888',
+        stitch_count: floss.stitchCount || 0,
+        skeins_needed: floss.skeinsNeeded || Math.max(1, Math.ceil((floss.stitchCount || 0) / 1800)),
+      })) || [];
+
+      const fabricDetails = pattern ? {
+        fabric_count: fabricCount,
+        fabric_type: `${fabricCount}-Count Aida Cloth`,
+        width_inches: pattern.physicalWidthInches,
+        height_inches: pattern.physicalHeightInches,
+        dimensions_str: `${pattern.physicalWidthInches}" × ${pattern.physicalHeightInches}"`,
+      } : {
+        fabric_count: fabricCount,
+        fabric_type: `${fabricCount}-Count Aida Cloth`,
+      };
+
       const result = await createOrderRequest({
         userId: activeUserId,
         userEmail: activeUserEmail,
@@ -238,6 +258,8 @@ export const PhotoConverterModal: React.FC<PhotoConverterModalProps> = ({ isOpen
           fabric_count: fabricCount,
           customer_name: effectiveUser?.name || '',
           customer_email: activeUserEmail || '',
+          thread_requirements: threadRequirements,
+          fabric_details: fabricDetails,
         }
       });
 

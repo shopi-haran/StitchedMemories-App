@@ -22,7 +22,8 @@ import {
   Scissors,
   Copy,
   Activity,
-  Layers
+  Layers,
+  MessageSquare
 } from 'lucide-react';
 import { 
   supabase, 
@@ -786,36 +787,164 @@ export const CustomOrdersTab: React.FC<CustomOrdersTabProps> = ({ user, onOpenCo
 
                 {/* Quoted State Action Card (When status is 'quoted') */}
                 {isQuotedState && (
-                  <div className="p-5 bg-gradient-to-r from-[#FAF6EE] to-[#FFF8F0] border-2 border-[#E06C38]/30 rounded-3xl space-y-4 animate-fadeIn">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="p-5 sm:p-6 bg-[#FAF6EE] border-2 border-[#E06C38]/30 rounded-3xl space-y-5 animate-fadeIn shadow-xs">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#1D231E]/10 pb-4">
                       <div>
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-[#E06C38] text-white mb-1.5">
                           <Sparkles className="w-3 h-3" /> Quote Ready for Approval
                         </span>
-                        <h4 className="text-base font-bold text-[#1D231E]">
-                          Studio Pricing & Delivery Quotation
+                        <h4 className="text-base sm:text-lg font-bold font-serif text-[#1D231E]">
+                          Itemized Studio Quotation
                         </h4>
                         <p className="text-xs text-[#5A6659] mt-0.5">
-                          Review your handcrafted quotation. Click Confirm Order to proceed with your booking.
+                          Review the detailed breakdown of thread floss, materials, and artisan preparation below.
                         </p>
                       </div>
 
                       {order.quoted_price !== undefined && Number(order.quoted_price) > 0 && (
-                        <div className="bg-white px-4 py-2.5 rounded-2xl border border-[#E8E1D2] text-right shrink-0 shadow-2xs">
+                        <div className="bg-white px-5 py-3 rounded-2xl border border-[#E8E1D2] text-right shrink-0 shadow-2xs">
                           <span className="text-[10px] font-bold text-[#8A9588] uppercase tracking-wider block">
-                            Quoted Total
+                            Total Quoted Price
                           </span>
-                          <span className="text-xl font-black text-[#1D231E]">
+                          <span className="text-2xl font-black font-serif text-[#1D231E]">
                             ${Number(order.quoted_price).toFixed(2)}
                           </span>
                         </div>
                       )}
                     </div>
 
-                    {order.status_note && (
+                    {/* Itemized Line Items Table if line_items exist */}
+                    {order.quote?.line_items && Array.isArray(order.quote.line_items) && order.quote.line_items.length > 0 ? (
+                      <div className="bg-white rounded-2xl border border-[#1D231E]/10 overflow-hidden shadow-2xs">
+                        <div className="px-4 py-3 bg-[#1D231E]/5 border-b border-[#1D231E]/10 flex items-center justify-between">
+                          <span className="text-xs font-bold uppercase tracking-wider text-[#1D231E] flex items-center gap-1.5">
+                            <Layers className="w-3.5 h-3.5 text-[#E06C38]" /> Materials & Components Breakdown
+                          </span>
+                          <span className="text-[11px] text-[#1D231E]/60 font-medium">
+                            {order.quote.line_items.length} {order.quote.line_items.length === 1 ? 'item' : 'items'}
+                          </span>
+                        </div>
+
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left text-xs border-collapse">
+                            <thead>
+                              <tr className="border-b border-[#1D231E]/10 text-[10px] font-bold uppercase tracking-wider text-[#1D231E]/60 bg-[#FAF6EE]/50">
+                                <th className="py-2.5 px-4 font-semibold">Item & Description</th>
+                                <th className="py-2.5 px-3 font-semibold text-center">Reference</th>
+                                <th className="py-2.5 px-3 font-semibold text-center">Qty</th>
+                                <th className="py-2.5 px-3 font-semibold text-right">Unit Price</th>
+                                <th className="py-2.5 px-4 font-semibold text-right">Total</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-[#1D231E]/5">
+                              {order.quote.line_items.map((item, idx) => (
+                                <tr key={item.id || idx} className="hover:bg-[#FAF6EE]/30 transition-colors">
+                                  <td className="py-2.5 px-4">
+                                    <div className="flex items-center gap-2">
+                                      {item.hex && (
+                                        <span
+                                          className="w-3.5 h-3.5 rounded-full shrink-0 border border-black/20 shadow-2xs"
+                                          style={{ backgroundColor: item.hex }}
+                                          title={item.dmc_code ? `DMC #${item.dmc_code}` : undefined}
+                                        />
+                                      )}
+                                      <span className="font-semibold text-[#1D231E]">{item.description}</span>
+                                    </div>
+                                  </td>
+                                  <td className="py-2.5 px-3 text-center text-[#1D231E]/60 text-[11px]">
+                                    {item.reference_qty ? (
+                                      <span className="px-2 py-0.5 bg-[#FAF6EE] rounded border border-[#1D231E]/10 font-mono text-[10px]">
+                                        {item.reference_qty}
+                                      </span>
+                                    ) : (
+                                      '—'
+                                    )}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-center font-medium text-[#1D231E]">
+                                    {item.quantity} {item.unit || 'pcs'}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-right text-[#1D231E]/70 font-mono">
+                                    ${Number(item.unit_price).toFixed(2)}
+                                  </td>
+                                  <td className="py-2.5 px-4 text-right font-bold text-[#1D231E] font-mono">
+                                    ${Number(item.total).toFixed(2)}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {/* Pricing Subtotal, Crafting, Shipping & Grand Total summary */}
+                        <div className="bg-[#FAF6EE]/40 border-t border-[#1D231E]/10 p-4 space-y-2 text-xs">
+                          <div className="flex justify-between text-[#1D231E]/70">
+                            <span>Items Subtotal:</span>
+                            <span className="font-semibold font-mono text-[#1D231E]">
+                              ${(order.quote.items_subtotal ?? order.quote.line_items.reduce((s, i) => s + (Number(i.total) || 0), 0)).toFixed(2)}
+                            </span>
+                          </div>
+
+                          {order.quote.crafting_charge !== undefined && Number(order.quote.crafting_charge) > 0 && (
+                            <div className="flex justify-between text-[#1D231E]/70">
+                              <span className="flex items-center gap-1">
+                                <Scissors className="w-3 h-3 text-[#2D5A43]" /> Crafting & Artisan Preparation:
+                              </span>
+                              <span className="font-semibold font-mono text-[#1D231E]">
+                                ${Number(order.quote.crafting_charge).toFixed(2)}
+                              </span>
+                            </div>
+                          )}
+
+                          <div className="flex justify-between text-[#1D231E]/70">
+                            <span className="flex items-center gap-1">
+                              <Truck className="w-3 h-3 text-[#E06C38]" /> Tracked Parcel Shipping:
+                            </span>
+                            <span className="font-semibold font-mono text-[#1D231E]">
+                              ${(Number(order.quote.delivery_charge) || 0).toFixed(2)}
+                            </span>
+                          </div>
+
+                          <div className="flex justify-between pt-2 border-t border-[#1D231E]/10 text-sm font-bold text-[#1D231E]">
+                            <span>Total Payable:</span>
+                            <span className="text-base font-black font-serif text-[#E06C38]">
+                              ${(Number(order.quote.total_amount) || Number(order.quoted_price) || 0).toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      /* Fallback for legacy flat quotes */
+                      <div className="bg-white p-4 rounded-2xl border border-[#1D231E]/10 space-y-2 text-xs">
+                        <div className="flex justify-between text-[#1D231E]/70">
+                          <span>Custom Materials & Crafting:</span>
+                          <span className="font-semibold font-mono text-[#1D231E]">
+                            ${(Number(order.quote?.item_price) || Number(order.item_price) || (Number(order.quoted_price) - (Number(order.delivery_charge) || 0)) || 0).toFixed(2)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-[#1D231E]/70">
+                          <span>Tracked Delivery:</span>
+                          <span className="font-semibold font-mono text-[#1D231E]">
+                            ${(Number(order.quote?.delivery_charge) || Number(order.delivery_charge) || 0).toFixed(2)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between pt-2 border-t border-[#1D231E]/10 text-sm font-bold text-[#1D231E]">
+                          <span>Total Quoted Amount:</span>
+                          <span className="text-base font-black font-serif text-[#E06C38]">
+                            ${(Number(order.quoted_price) || Number(order.total_amount) || 0).toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Artisan Note */}
+                    {(order.quote?.admin_notes || order.status_note || order.admin_notes) && (
                       <div className="p-3.5 bg-white rounded-2xl border border-[#E8E1D2]/80 text-xs text-[#1D231E]">
-                        <p className="font-bold text-[#556653] text-[11px] mb-0.5">Studio Artisan Note:</p>
-                        <p className="leading-relaxed">{order.status_note}</p>
+                        <p className="font-bold text-[#556653] text-[11px] mb-0.5 flex items-center gap-1.5">
+                          <MessageSquare className="w-3.5 h-3.5 text-[#E06C38]" /> Studio Artisan Note:
+                        </p>
+                        <p className="leading-relaxed text-[#1D231E]/80">
+                          {order.quote?.admin_notes || order.status_note || order.admin_notes}
+                        </p>
                       </div>
                     )}
 
@@ -828,7 +957,7 @@ export const CustomOrdersTab: React.FC<CustomOrdersTabProps> = ({ user, onOpenCo
                       <button
                         onClick={() => handleConfirmQuote(order)}
                         disabled={confirmingOrderId === (order.raw_order_id || order.id)}
-                        className="px-5 py-2.5 bg-[#1D231E] hover:bg-[#323D34] text-white text-xs font-bold rounded-full transition-all cursor-pointer flex items-center gap-2 shadow-sm disabled:opacity-50 shrink-0"
+                        className="px-6 py-3 bg-[#1D231E] hover:bg-[#323D34] text-white text-xs font-bold rounded-full transition-all cursor-pointer flex items-center gap-2 shadow-sm disabled:opacity-50 shrink-0"
                       >
                         {confirmingOrderId === (order.raw_order_id || order.id) ? (
                           <>

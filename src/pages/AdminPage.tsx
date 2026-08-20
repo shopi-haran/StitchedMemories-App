@@ -34,7 +34,9 @@ import {
   CreditCard,
   TrendingUp,
   Tag,
-  BookOpen
+  BookOpen,
+  Plus,
+  Trash2
 } from 'lucide-react';
 import {
   fetchAllAdminOrders,
@@ -79,8 +81,19 @@ export const AdminPage: React.FC<AdminPageProps> = ({
 
   // Quote Form Modal State
   const [selectedQuoteOrder, setSelectedQuoteOrder] = useState<SupabaseStitchOrderRow | null>(null);
-  const [itemPriceInput, setItemPriceInput] = useState<string>('');
-  const [deliveryChargeInput, setDeliveryChargeInput] = useState<string>('0');
+  const [quoteLineItems, setQuoteLineItems] = useState<Array<{
+    id: string;
+    description: string;
+    reference_qty: string;
+    quantity: string | number;
+    unit: string;
+    unit_price: string | number;
+    total: number;
+    dmc_code?: string;
+    hex?: string;
+  }>>([]);
+  const [craftingChargeInput, setCraftingChargeInput] = useState<string>('0');
+  const [deliveryChargeInput, setDeliveryChargeInput] = useState<string>('5.00');
   const [adminNotesInput, setAdminNotesInput] = useState<string>('');
   const [isSubmittingQuote, setIsSubmittingQuote] = useState(false);
 
@@ -253,41 +266,186 @@ export const AdminPage: React.FC<AdminPageProps> = ({
   // Open Quote Form for an order
   const handleOpenQuoteForm = (order: SupabaseStitchOrderRow) => {
     setSelectedQuoteOrder(order);
-    const existingItemPrice = order.quote?.item_price ?? order.item_price ?? (order.total_amount && order.total_amount > 0 ? order.total_amount : '');
-    const existingDelivery = order.quote?.delivery_charge ?? order.delivery_charge ?? 0;
-    const existingNotes = order.quote?.admin_notes || order.admin_notes || '';
+    const details = order.request_details || {};
+    const existingQuote = order.quote;
 
-    setItemPriceInput(existingItemPrice !== '' ? String(existingItemPrice) : '');
-    setDeliveryChargeInput(String(existingDelivery));
-    setAdminNotesInput(existingNotes);
+    if (existingQuote?.line_items && Array.isArray(existingQuote.line_items) && existingQuote.line_items.length > 0) {
+      // 1. Existing itemized quote
+      setQuoteLineItems(
+        existingQuote.line_items.map((it, idx) => {
+          const qty = it.quantity !== undefined ? it.quantity : 1;
+          const uPrice = it.unit_price !== undefined ? it.unit_price : 0;
+          const numQty = parseFloat(String(qty)) || 0;
+          const numUPrice = parseFloat(String(uPrice)) || 0;
+          return {
+            id: it.id || `item_${idx + 1}`,
+            description: it.description || '',
+            reference_qty: it.reference_qty || '',
+            quantity: qty,
+            unit: it.unit || 'pcs',
+            unit_price: uPrice,
+            total: it.total !== undefined ? Number(it.total) : Number((numQty * numUPrice).toFixed(2)),
+            dmc_code: it.dmc_code,
+            hex: it.hex,
+          };
+        })
+      );
+      setCraftingChargeInput(existingQuote.crafting_charge !== undefined ? String(existingQuote.crafting_charge) : '0');
+      setDeliveryChargeInput(existingQuote.delivery_charge !== undefined ? String(existingQuote.delivery_charge) : '5.00');
+      setAdminNotesInput(existingQuote.admin_notes || order.admin_notes || '');
+    } else if (details.thread_requirements && Array.isArray(details.thread_requirements) && details.thread_requirements.length > 0) {
+      // 2. Pre-populate from converter thread requirements
+      const populatedItems = details.thread_requirements.map((item: any, idx: number) => {
+        const skeins = item.skeins_needed || (item.stitch_count ? Math.max(1, Math.ceil(Number(item.stitch_count) / 1800)) : 1);
+        const unitPrice = 1.20;
+        return {
+          id: `item_dmc_${idx + 1}`,
+          description: `DMC ${item.dmc_code || ''} - ${item.color_name || 'Embroidery Floss'}`,
+          reference_qty: item.stitch_count ? `${Number(item.stitch_count).toLocaleString()} stitches` : '',
+          quantity: skeins,
+          unit: 'skeins',
+          unit_price: unitPrice.toFixed(2),
+          total: Number((skeins * unitPrice).toFixed(2)),
+          dmc_code: item.dmc_code,
+          hex: item.hex,
+        };
+      });
+
+      // Add pre-filled row for fabric (Aida cloth)
+      const fabricDetails = details.fabric_details || {};
+      const fabricCount = details.fabric_count || fabricDetails.fabric_count || 14;
+      const fabricDesc = fabricDetails.fabric_type || `${fabricCount}-Count Aida Cloth`;
+      const fabricDimensions = fabricDetails.dimensions_str || (details.size ? `(${details.size})` : '');
+
+      populatedItems.push({
+        id: `item_fabric_base`,
+        description: `${fabricDesc} ${fabricDimensions}`.trim(),
+        reference_qty: 'Fabric base',
+        quantity: 1,
+        unit: 'pcs',
+        unit_price: '8.00',
+        total: 8.00,
+      });
+
+      setQuoteLineItems(populatedItems);
+      setCraftingChargeInput('0');
+      setDeliveryChargeInput('5.00');
+      setAdminNotesInput(
+        order.admin_notes ||
+        `Custom kit prepared with ${details.thread_requirements.length} DMC stranded floss skeins, premium Zweigart Aida fabric, needle pack & full-color chart guide.`
+      );
+    } else {
+      // 3. Assisted kit or custom keepsake without predefined thread array
+      const defaultDesc = order.order_type === 'custom_stitched'
+        ? 'Handcrafted Bespoke Embroidery Keepsake'
+        : order.order_type === 'custom_kit_assisted'
+        ? 'Assisted Custom Kit Materials (Floss & Fabric)'
+        : 'Embroidery Materials & Supplies';
+
+      const initialPrice = existingQuote?.item_price ?? order.item_price ?? (order.total_amount && order.total_amount > 0 ? order.total_amount : '');
+      const numPrice = parseFloat(String(initialPrice)) || 0;
+
+      setQuoteLineItems([
+        {
+          id: `item_1`,
+          description: defaultDesc,
+          reference_qty: details.size ? `Size: ${details.size}` : '',
+          quantity: 1,
+          unit: 'pcs',
+          unit_price: initialPrice !== '' ? String(initialPrice) : '',
+          total: numPrice,
+        },
+      ]);
+      setCraftingChargeInput(order.order_type === 'custom_stitched' ? (existingQuote?.crafting_charge !== undefined ? String(existingQuote.crafting_charge) : '35.00') : '0');
+      setDeliveryChargeInput(existingQuote?.delivery_charge !== undefined ? String(existingQuote.delivery_charge) : '5.00');
+      setAdminNotesInput(existingQuote?.admin_notes || order.admin_notes || '');
+    }
   };
+
+  // Line item helpers for Quote Form
+  const handleUpdateLineItem = (index: number, field: string, val: any) => {
+    setQuoteLineItems((prev) => {
+      const next = [...prev];
+      const target = { ...next[index], [field]: val };
+      const qty = parseFloat(String(target.quantity)) || 0;
+      const unitP = parseFloat(String(target.unit_price)) || 0;
+      target.total = Number((qty * unitP).toFixed(2));
+      next[index] = target;
+      return next;
+    });
+  };
+
+  const handleAddLineItem = () => {
+    setQuoteLineItems((prev) => [
+      ...prev,
+      {
+        id: `item_${Date.now()}`,
+        description: '',
+        reference_qty: '',
+        quantity: 1,
+        unit: 'pcs',
+        unit_price: '',
+        total: 0,
+      },
+    ]);
+  };
+
+  const handleRemoveLineItem = (index: number) => {
+    setQuoteLineItems((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  // Running totals calculations for Quote Modal
+  const itemsSubtotal = useMemo(() => {
+    return quoteLineItems.reduce((sum, it) => {
+      const qty = parseFloat(String(it.quantity)) || 0;
+      const unitP = parseFloat(String(it.unit_price)) || 0;
+      return sum + (qty * unitP);
+    }, 0);
+  }, [quoteLineItems]);
+
+  const numCraftingCharge = parseFloat(craftingChargeInput) || 0;
+  const numDeliveryCharge = parseFloat(deliveryChargeInput) || 0;
+  const calculatedGrandTotal = itemsSubtotal + numCraftingCharge + numDeliveryCharge;
 
   // Submit Quote Form
   const handleSaveQuote = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedQuoteOrder) return;
 
-    const numItemPrice = parseFloat(itemPriceInput);
-    const numDeliveryCharge = parseFloat(deliveryChargeInput) || 0;
-
-    if (isNaN(numItemPrice) || numItemPrice < 0) {
-      alert('Please enter a valid item price.');
+    if (quoteLineItems.length === 0) {
+      alert('Please add at least one line item to the quotation.');
       return;
     }
 
-    const calculatedTotal = numItemPrice + numDeliveryCharge;
+    const processedLineItems = quoteLineItems.map((it, idx) => {
+      const qty = parseFloat(String(it.quantity)) || 0;
+      const uPrice = parseFloat(String(it.unit_price)) || 0;
+      return {
+        id: it.id || `item_${idx + 1}`,
+        description: it.description.trim() || 'Material Item',
+        reference_qty: it.reference_qty || '',
+        quantity: qty,
+        unit: it.unit || 'pcs',
+        unit_price: uPrice,
+        total: Number((qty * uPrice).toFixed(2)),
+        dmc_code: it.dmc_code,
+        hex: it.hex,
+      };
+    });
 
     setIsSubmittingQuote(true);
     try {
       const result = await submitAdminQuote(selectedQuoteOrder.id, {
-        item_price: numItemPrice,
+        line_items: processedLineItems,
+        items_subtotal: itemsSubtotal,
+        crafting_charge: numCraftingCharge,
         delivery_charge: numDeliveryCharge,
-        total_amount: calculatedTotal,
+        total_amount: calculatedGrandTotal,
         admin_notes: adminNotesInput.trim(),
       });
 
       if (result.success) {
-        showToast(`Quote for Order #${selectedQuoteOrder.id} saved & published successfully! ($${calculatedTotal.toFixed(2)})`);
+        showToast(`Itemized quote for Order #${selectedQuoteOrder.id} saved & published! (${processedLineItems.length} items, $${calculatedGrandTotal.toFixed(2)})`);
         setSelectedQuoteOrder(null);
         await loadData(true);
       } else {
@@ -816,13 +974,29 @@ export const AdminPage: React.FC<AdminPageProps> = ({
 
                             {/* Current Quote Snapshot if already edited */}
                             {order.quote && (
-                              <div className="mt-3 pt-3 border-t border-[#1D231E]/10 flex items-center justify-between text-xs text-[#1D231E]/70">
+                              <div className="mt-3 pt-3 border-t border-[#1D231E]/10 flex flex-wrap items-center justify-between gap-2 text-xs text-[#1D231E]/70">
                                 <span>
-                                  Draft Quote: Item ${order.quote.item_price.toFixed(2)} + Delivery ${order.quote.delivery_charge.toFixed(2)}
+                                  {order.quote.line_items && order.quote.line_items.length > 0 ? (
+                                    <>
+                                      <strong>{order.quote.line_items.length} Line Items:</strong> Subtotal ${(order.quote.items_subtotal ?? 0).toFixed(2)} + Crafting ${(order.quote.crafting_charge ?? 0).toFixed(2)} + Delivery ${(order.quote.delivery_charge ?? 0).toFixed(2)}
+                                    </>
+                                  ) : (
+                                    <>
+                                      Draft Quote: Item ${(order.quote.item_price ?? 0).toFixed(2)} + Delivery ${(order.quote.delivery_charge ?? 0).toFixed(2)}
+                                    </>
+                                  )}
                                 </span>
-                                <span className="font-bold text-[#E06C38]">
-                                  Total: ${order.quote.total_amount.toFixed(2)}
+                                <span className="font-bold text-[#E06C38] text-sm">
+                                  Total: ${(order.quote.total_amount ?? 0).toFixed(2)}
                                 </span>
+                              </div>
+                            )}
+
+                            {/* Thread Requirements Recorded Badge */}
+                            {!order.quote && details.thread_requirements && Array.isArray(details.thread_requirements) && details.thread_requirements.length > 0 && (
+                              <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-semibold">
+                                <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                                {details.thread_requirements.length} DMC thread colors recorded in pattern
                               </div>
                             )}
                           </div>
@@ -1057,11 +1231,15 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                                       <span className="font-bold text-sm text-[#1D231E]">
                                         ${totalAmount.toFixed(2)}
                                       </span>
-                                      {order.quote?.item_price && (
+                                      {order.quote?.line_items && order.quote.line_items.length > 0 ? (
+                                        <span className="text-[10px] text-[#1D231E]/60 block mt-0.5">
+                                          {order.quote.line_items.length} items (${(order.quote.items_subtotal ?? 0).toFixed(2)}) + Ship ${(order.quote.delivery_charge || 0).toFixed(2)}
+                                        </span>
+                                      ) : order.quote?.item_price ? (
                                         <span className="text-[10px] text-[#1D231E]/50 block">
                                           (Item ${order.quote.item_price} + Ship ${order.quote.delivery_charge})
                                         </span>
-                                      )}
+                                      ) : null}
                                     </div>
                                   ) : (
                                     <span className="text-xs text-amber-700 italic font-medium">
@@ -1273,15 +1451,15 @@ export const AdminPage: React.FC<AdminPageProps> = ({
       </div>
 
       {/* ========================================================================= */}
-      {/* MODAL 1: SET QUOTE FORM */}
+      {/* MODAL 1: SET ITEMIZE PRICING QUOTE FORM */}
       {/* ========================================================================= */}
       {selectedQuoteOrder && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl border border-[#1D231E]/10 my-8 animate-scale-up">
+          <div className="bg-white rounded-3xl max-w-3xl w-full p-6 sm:p-8 shadow-2xl border border-[#1D231E]/10 my-8 animate-scale-up">
             <div className="flex items-center justify-between border-b border-[#1D231E]/10 pb-4 mb-6">
               <div>
                 <h3 className="text-xl font-bold text-[#1D231E] font-serif flex items-center gap-2">
-                  <DollarSign className="w-5 h-5 text-[#E06C38]" /> Set Pricing Quote
+                  <DollarSign className="w-5 h-5 text-[#E06C38]" /> Set Itemized Pricing Quote
                 </h3>
                 <p className="text-xs text-[#1D231E]/60 mt-0.5">
                   Order #{selectedQuoteOrder.id} • {selectedQuoteOrder.customer_name || 'Customer'}
@@ -1295,32 +1473,168 @@ export const AdminPage: React.FC<AdminPageProps> = ({
               </button>
             </div>
 
-            <form onSubmit={handleSaveQuote} className="space-y-5">
+            <form onSubmit={handleSaveQuote} className="space-y-6">
               {/* Customer summary block */}
               <div className="bg-[#FAF6EE] p-4 rounded-2xl border border-[#1D231E]/5 text-xs space-y-1.5">
-                <div className="flex justify-between">
-                  <span className="text-[#1D231E]/60">Customer Email:</span>
-                  <span className="font-semibold text-[#1D231E]">
-                    {selectedQuoteOrder.customer_email || selectedQuoteOrder.user_id}
-                  </span>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[#1D231E]/60">Customer:</span>
+                    <span className="font-semibold text-[#1D231E]">
+                      {selectedQuoteOrder.customer_name || 'Customer'}
+                    </span>
+                    <span className="text-[#1D231E]/40 font-mono">
+                      ({selectedQuoteOrder.customer_email || selectedQuoteOrder.user_id})
+                    </span>
+                  </div>
+                  <div>{renderTierBadge(selectedQuoteOrder.customer_tier)}</div>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-[#1D231E]/60">Effective Tier:</span>
-                  <span>{renderTierBadge(selectedQuoteOrder.customer_tier)}</span>
-                </div>
-                <div className="flex justify-between">
+                <div className="flex items-center justify-between pt-1 border-t border-[#1D231E]/5">
                   <span className="text-[#1D231E]/60">Order Type:</span>
                   <span className="font-semibold text-[#1D231E]">
-                    {selectedQuoteOrder.order_type || 'Custom Keepsake'}
+                    {selectedQuoteOrder.order_type === 'custom_kit_converter'
+                      ? 'Custom Kit (Photo Converter)'
+                      : selectedQuoteOrder.order_type === 'custom_kit_assisted'
+                      ? 'Assisted Kit Request'
+                      : selectedQuoteOrder.order_type === 'custom_stitched'
+                      ? 'Custom Stitched Keepsake'
+                      : selectedQuoteOrder.order_type || 'Custom Order'}
                   </span>
+                </div>
+                {selectedQuoteOrder.request_details?.size && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-[#1D231E]/60">Pattern Specs:</span>
+                    <span className="font-medium text-[#1D231E]">
+                      {selectedQuoteOrder.request_details.size}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* LINE ITEMS TABLE */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-[#1D231E] uppercase tracking-wider flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5 text-[#E06C38]" /> Quote Line Items ({quoteLineItems.length})
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleAddLineItem}
+                    className="px-3 py-1 bg-[#2D5A43] hover:bg-[#234735] text-white text-xs font-semibold rounded-lg flex items-center gap-1 transition-colors shadow-2xs"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Add Item
+                  </button>
+                </div>
+
+                <div className="border border-[#1D231E]/15 rounded-2xl overflow-hidden shadow-2xs">
+                  <div className="overflow-x-auto max-h-80 overflow-y-auto">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead className="sticky top-0 bg-[#FAF6EE] border-b border-[#1D231E]/10 z-10">
+                        <tr className="text-[10px] font-bold uppercase tracking-wider text-[#1D231E]/70">
+                          <th className="py-2.5 px-3 min-w-[200px]">Description</th>
+                          <th className="py-2.5 px-2 min-w-[110px]">Reference</th>
+                          <th className="py-2.5 px-2 w-20">Qty</th>
+                          <th className="py-2.5 px-2 w-20">Unit</th>
+                          <th className="py-2.5 px-2 w-24">Unit ($)</th>
+                          <th className="py-2.5 px-3 w-24 text-right">Total ($)</th>
+                          <th className="py-2.5 px-2 w-10 text-center"></th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#1D231E]/10 bg-white">
+                        {quoteLineItems.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className="py-6 text-center text-xs text-[#1D231E]/40 italic">
+                              No line items added. Click "+ Add Item" above.
+                            </td>
+                          </tr>
+                        ) : (
+                          quoteLineItems.map((item, idx) => (
+                            <tr key={item.id || idx} className="hover:bg-[#FAF6EE]/40 transition-colors">
+                              <td className="py-2 px-3">
+                                <div className="flex items-center gap-2">
+                                  {item.hex && (
+                                    <span
+                                      className="w-3.5 h-3.5 rounded-full shrink-0 border border-black/20"
+                                      style={{ backgroundColor: item.hex }}
+                                      title={item.dmc_code ? `DMC #${item.dmc_code}` : undefined}
+                                    />
+                                  )}
+                                  <input
+                                    type="text"
+                                    required
+                                    placeholder="e.g. DMC 310 - Black"
+                                    value={item.description}
+                                    onChange={(e) => handleUpdateLineItem(idx, 'description', e.target.value)}
+                                    className="w-full p-1.5 bg-[#FAF6EE] border border-[#1D231E]/10 rounded-lg text-xs font-medium text-[#1D231E] focus:outline-none focus:ring-1 focus:ring-[#E06C38]"
+                                  />
+                                </div>
+                              </td>
+                              <td className="py-2 px-2">
+                                <input
+                                  type="text"
+                                  placeholder="e.g. 1,240 sts"
+                                  value={item.reference_qty || ''}
+                                  onChange={(e) => handleUpdateLineItem(idx, 'reference_qty', e.target.value)}
+                                  className="w-full p-1.5 bg-[#FAF6EE] border border-[#1D231E]/10 rounded-lg text-[11px] font-mono text-[#1D231E]/70 focus:outline-none focus:ring-1 focus:ring-[#E06C38]"
+                                />
+                              </td>
+                              <td className="py-2 px-2">
+                                <input
+                                  type="number"
+                                  step="any"
+                                  min="0"
+                                  required
+                                  value={item.quantity}
+                                  onChange={(e) => handleUpdateLineItem(idx, 'quantity', e.target.value)}
+                                  className="w-full p-1.5 bg-[#FAF6EE] border border-[#1D231E]/10 rounded-lg text-xs text-center font-bold text-[#1D231E] focus:outline-none focus:ring-1 focus:ring-[#E06C38]"
+                                />
+                              </td>
+                              <td className="py-2 px-2">
+                                <input
+                                  type="text"
+                                  value={item.unit || 'pcs'}
+                                  onChange={(e) => handleUpdateLineItem(idx, 'unit', e.target.value)}
+                                  className="w-full p-1.5 bg-[#FAF6EE] border border-[#1D231E]/10 rounded-lg text-xs text-center text-[#1D231E]/80 focus:outline-none focus:ring-1 focus:ring-[#E06C38]"
+                                />
+                              </td>
+                              <td className="py-2 px-2">
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  required
+                                  placeholder="0.00"
+                                  value={item.unit_price}
+                                  onChange={(e) => handleUpdateLineItem(idx, 'unit_price', e.target.value)}
+                                  className="w-full p-1.5 bg-[#FAF6EE] border border-[#1D231E]/10 rounded-lg text-xs font-mono font-bold text-[#1D231E] focus:outline-none focus:ring-1 focus:ring-[#E06C38]"
+                                />
+                              </td>
+                              <td className="py-2 px-3 text-right font-bold text-xs font-mono text-[#1D231E]">
+                                ${(item.total || 0).toFixed(2)}
+                              </td>
+                              <td className="py-2 px-2 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveLineItem(idx)}
+                                  className="p-1 text-gray-400 hover:text-red-600 rounded hover:bg-red-50 transition-colors"
+                                  title="Remove item"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
 
-              {/* Pricing Inputs */}
+              {/* CRAFTING & DELIVERY CHARGES */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-[#1D231E] uppercase tracking-wider mb-1.5">
-                    Item / Crafting Price ($) *
+                  <label className="block text-xs font-bold text-[#1D231E] uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                    <Scissors className="w-3.5 h-3.5 text-[#2D5A43]" /> Crafting / Artisan Charge ($)
                   </label>
                   <div className="relative">
                     <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-bold text-gray-500">
@@ -1330,18 +1644,17 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                       type="number"
                       step="0.01"
                       min="0"
-                      required
-                      placeholder="e.g. 45.00"
-                      value={itemPriceInput}
-                      onChange={(e) => setItemPriceInput(e.target.value)}
+                      placeholder="0.00"
+                      value={craftingChargeInput}
+                      onChange={(e) => setCraftingChargeInput(e.target.value)}
                       className="w-full pl-8 pr-4 py-2.5 bg-[#FAF6EE] border border-[#1D231E]/15 rounded-xl text-sm font-bold text-[#1D231E] focus:outline-none focus:ring-2 focus:ring-[#E06C38]"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-[#1D231E] uppercase tracking-wider mb-1.5">
-                    Delivery Charge ($)
+                  <label className="block text-xs font-bold text-[#1D231E] uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                    <Truck className="w-3.5 h-3.5 text-[#E06C38]" /> Delivery / Shipping Charge ($)
                   </label>
                   <div className="relative">
                     <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-bold text-gray-500">
@@ -1351,7 +1664,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                       type="number"
                       step="0.01"
                       min="0"
-                      placeholder="e.g. 8.50"
+                      placeholder="5.00"
                       value={deliveryChargeInput}
                       onChange={(e) => setDeliveryChargeInput(e.target.value)}
                       className="w-full pl-8 pr-4 py-2.5 bg-[#FAF6EE] border border-[#1D231E]/15 rounded-xl text-sm font-bold text-[#1D231E] focus:outline-none focus:ring-2 focus:ring-[#E06C38]"
@@ -1360,42 +1673,40 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                 </div>
               </div>
 
-              {/* Auto-Calculated Total Preview */}
-              <div className="bg-[#1D231E] text-white p-4 rounded-2xl flex items-center justify-between shadow-inner">
-                <div>
-                  <span className="text-xs text-white/70 block">Total Quoted Amount</span>
-                  <span className="text-[11px] text-white/50">
-                    Item (${parseFloat(itemPriceInput) || 0}) + Delivery ($
-                    {parseFloat(deliveryChargeInput) || 0})
+              {/* AUTO-CALCULATED RUNNING TOTAL PREVIEW */}
+              <div className="bg-[#1D231E] text-white p-4 sm:p-5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-inner">
+                <div className="space-y-0.5">
+                  <span className="text-xs text-white/70 block font-medium">Total Quoted Amount</span>
+                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60 font-mono">
+                    <span>Items (${itemsSubtotal.toFixed(2)})</span>
+                    <span>+</span>
+                    <span>Crafting (${numCraftingCharge.toFixed(2)})</span>
+                    <span>+</span>
+                    <span>Shipping (${numDeliveryCharge.toFixed(2)})</span>
+                  </div>
+                </div>
+                <div className="text-left sm:text-right">
+                  <span className="text-2xl sm:text-3xl font-bold font-serif text-[#E06C38]">
+                    ${calculatedGrandTotal.toFixed(2)}
                   </span>
                 </div>
-                <span className="text-2xl font-bold font-serif text-[#E06C38]">
-                  $
-                  {(
-                    (parseFloat(itemPriceInput) || 0) +
-                    (parseFloat(deliveryChargeInput) || 0)
-                  ).toFixed(2)}
-                </span>
               </div>
 
-              {/* Admin Notes Field */}
+              {/* ADMIN NOTES FIELD */}
               <div>
                 <label className="block text-xs font-bold text-[#1D231E] uppercase tracking-wider mb-1.5">
-                  Admin Notes & Artisan Details
+                  Admin Notes & Artisan Details (Shown to Customer)
                 </label>
                 <textarea
-                  rows={3}
-                  placeholder="e.g. Includes premium DMC stranded floss, 14ct Zweigart Aida cloth, color chart booklet, and express tracked shipping."
+                  rows={2}
+                  placeholder="e.g. Includes premium DMC stranded floss, 14ct Zweigart Aida cloth, needle pack & full-color chart guide."
                   value={adminNotesInput}
                   onChange={(e) => setAdminNotesInput(e.target.value)}
                   className="w-full p-3 bg-[#FAF6EE] border border-[#1D231E]/15 rounded-xl text-xs text-[#1D231E] focus:outline-none focus:ring-2 focus:ring-[#E06C38]"
                 />
-                <p className="text-[11px] text-[#1D231E]/50 mt-1">
-                  These notes will be displayed directly to the customer in their dashboard order card.
-                </p>
               </div>
 
-              {/* Modal Actions */}
+              {/* MODAL ACTIONS */}
               <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#1D231E]/10">
                 <button
                   type="button"
@@ -1412,11 +1723,11 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                   {isSubmittingQuote ? (
                     <>
                       <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      Publishing Quote...
+                      Publishing Itemized Quote...
                     </>
                   ) : (
                     <>
-                      <Check className="w-4 h-4" /> Save & Publish Quote
+                      <Check className="w-4 h-4" /> Save & Publish Quote (${calculatedGrandTotal.toFixed(2)})
                     </>
                   )}
                 </button>
@@ -1506,6 +1817,69 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                       )}
                     </div>
                   </div>
+
+                  {/* Itemized Quotation Breakdown Card if Quote exists */}
+                  {selectedOrderForEdit.quote && (
+                    <div className="bg-white p-3.5 rounded-xl border border-[#1D231E]/10 space-y-2">
+                      <div className="flex items-center justify-between border-b border-[#1D231E]/10 pb-1.5">
+                        <span className="font-bold text-[#1D231E] flex items-center gap-1.5 text-xs">
+                          <DollarSign className="w-3.5 h-3.5 text-[#E06C38]" /> Itemized Studio Quotation
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const ord = selectedOrderForEdit;
+                            setSelectedOrderForEdit(null);
+                            handleOpenQuoteForm(ord);
+                          }}
+                          className="text-[11px] text-[#E06C38] font-bold hover:underline"
+                        >
+                          Edit Quotation →
+                        </button>
+                      </div>
+
+                      {selectedOrderForEdit.quote.line_items && selectedOrderForEdit.quote.line_items.length > 0 ? (
+                        <div className="space-y-1.5">
+                          <div className="max-h-36 overflow-y-auto divide-y divide-[#1D231E]/5 text-[11px]">
+                            {selectedOrderForEdit.quote.line_items.map((it: any, idx: number) => (
+                              <div key={it.id || idx} className="py-1 flex items-center justify-between">
+                                <div className="flex items-center gap-1.5">
+                                  {it.hex && (
+                                    <span
+                                      className="w-2.5 h-2.5 rounded-full border border-black/20 shrink-0"
+                                      style={{ backgroundColor: it.hex }}
+                                    />
+                                  )}
+                                  <span className="font-medium text-[#1D231E]">{it.description}</span>
+                                  <span className="text-[#1D231E]/50">({it.quantity} {it.unit || 'pcs'} @ ${Number(it.unit_price).toFixed(2)})</span>
+                                </div>
+                                <span className="font-mono font-bold text-[#1D231E]">${Number(it.total).toFixed(2)}</span>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="pt-1.5 border-t border-[#1D231E]/10 flex flex-wrap items-center justify-between text-[11px] font-medium text-[#1D231E]/70">
+                            <span>Subtotal: ${(selectedOrderForEdit.quote.items_subtotal ?? 0).toFixed(2)}</span>
+                            {Number(selectedOrderForEdit.quote.crafting_charge || 0) > 0 && (
+                              <span>Crafting: ${(selectedOrderForEdit.quote.crafting_charge).toFixed(2)}</span>
+                            )}
+                            <span>Ship: ${(selectedOrderForEdit.quote.delivery_charge || 0).toFixed(2)}</span>
+                            <span className="font-bold text-[#E06C38] text-xs">
+                              Total: ${(selectedOrderForEdit.quote.total_amount || 0).toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-[#1D231E]/70">
+                            Item: ${(selectedOrderForEdit.quote.item_price || 0).toFixed(2)} + Ship: ${(selectedOrderForEdit.quote.delivery_charge || 0).toFixed(2)}
+                          </span>
+                          <span className="font-bold text-[#E06C38]">
+                            Total: ${(selectedOrderForEdit.quote.total_amount || 0).toFixed(2)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {editNotes && (
                     <div className="p-2.5 bg-amber-50 rounded-xl border border-amber-200 text-amber-950">

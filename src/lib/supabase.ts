@@ -675,12 +675,27 @@ export async function createOrderRequest(params: CreateOrderRequestParams): Prom
   }
 }
 
+export interface AdminQuoteLineItem {
+  id?: string;
+  description: string;
+  reference_qty?: string;
+  quantity: number | string;
+  unit?: string;
+  unit_price: number | string;
+  total: number;
+  dmc_code?: string;
+  hex?: string;
+}
+
 export interface AdminQuoteData {
-  item_price: number;
+  line_items?: AdminQuoteLineItem[];
+  items_subtotal?: number;
+  crafting_charge?: number;
   delivery_charge: number;
   total_amount: number;
   admin_notes: string;
   quoted_at?: string;
+  item_price?: number; // legacy fallback
 }
 
 export interface SupabaseStitchOrderRow {
@@ -958,10 +973,13 @@ export async function fetchAllAdminOrders(): Promise<SupabaseStitchOrderRow[]> {
 export async function submitAdminQuote(
   orderId: string | number,
   quoteData: {
-    item_price: number;
+    line_items?: AdminQuoteLineItem[];
+    items_subtotal?: number;
+    crafting_charge?: number;
     delivery_charge: number;
     total_amount: number;
     admin_notes: string;
+    item_price?: number;
   }
 ): Promise<{ success: boolean; error?: any }> {
   try {
@@ -969,10 +987,39 @@ export async function submitAdminQuote(
       ? orderId.replace('order_', '')
       : orderId;
 
+    const normalizedLineItems = (quoteData.line_items || []).map((item, idx) => {
+      const q = typeof item.quantity === 'number' ? item.quantity : (parseFloat(String(item.quantity)) || 0);
+      const up = typeof item.unit_price === 'number' ? item.unit_price : (parseFloat(String(item.unit_price)) || 0);
+      return {
+        id: item.id || `item_${idx + 1}`,
+        description: item.description || 'Item',
+        reference_qty: item.reference_qty || '',
+        quantity: q,
+        unit: item.unit || 'pcs',
+        unit_price: up,
+        total: item.total !== undefined ? Number(item.total) : Number((q * up).toFixed(2)),
+        dmc_code: item.dmc_code,
+        hex: item.hex,
+      };
+    });
+
+    const itemsSubtotal = quoteData.items_subtotal !== undefined
+      ? Number(quoteData.items_subtotal)
+      : normalizedLineItems.reduce((sum, item) => sum + (Number(item.total) || 0), 0);
+
+    const craftingCharge = Number(quoteData.crafting_charge) || 0;
+    const deliveryCharge = Number(quoteData.delivery_charge) || 0;
+    const calculatedTotal = quoteData.total_amount !== undefined
+      ? Number(quoteData.total_amount)
+      : Number((itemsSubtotal + craftingCharge + deliveryCharge).toFixed(2));
+
     const quoteJson = {
-      item_price: Number(quoteData.item_price) || 0,
-      delivery_charge: Number(quoteData.delivery_charge) || 0,
-      total_amount: Number(quoteData.total_amount) || 0,
+      line_items: normalizedLineItems,
+      items_subtotal: Number(itemsSubtotal.toFixed(2)),
+      crafting_charge: Number(craftingCharge.toFixed(2)),
+      delivery_charge: Number(deliveryCharge.toFixed(2)),
+      total_amount: Number(calculatedTotal.toFixed(2)),
+      item_price: Number((itemsSubtotal + craftingCharge).toFixed(2)), // legacy fallback
       admin_notes: quoteData.admin_notes || '',
       quoted_at: new Date().toISOString(),
     };
@@ -983,8 +1030,8 @@ export async function submitAdminQuote(
 
     const payload: Record<string, any> = {
       quote: quoteJson,
-      quoted_price: Number(quoteData.total_amount) || 0,
-      total_amount: Number(quoteData.total_amount) || 0,
+      quoted_price: Number(calculatedTotal.toFixed(2)),
+      total_amount: Number(calculatedTotal.toFixed(2)),
       fulfillment_status: 'quoted',
       status_note: statusNoteText,
       admin_notes: quoteData.admin_notes || '',

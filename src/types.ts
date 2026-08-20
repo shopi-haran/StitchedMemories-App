@@ -66,3 +66,42 @@ export interface DMCColor {
   name: string;
   hex: string;
 }
+
+export interface ThreadRequirement {
+  dmc_code: string;
+  color_name: string;
+  hex?: string;
+  stitch_count: number;
+  skeins_needed?: number;
+}
+
+export interface FabricRequirement {
+  fabric_count?: number;
+  fabric_type?: string;
+  width_inches?: number;
+  height_inches?: number;
+  dimensions_str?: string;
+}
+
+export interface QuoteLineItem {
+  id?: string;
+  description: string;
+  reference_qty?: string;
+  quantity: number | string;
+  unit?: string;
+  unit_price: number | string;
+  total: number;
+  dmc_code?: string;
+  hex?: string;
+}
+
+export interface OrderQuoteData {
+  line_items?: QuoteLineItem[];
+  items_subtotal?: number;
+  crafting_charge?: number;
+  delivery_charge: number;
+  total_amount: number;
+  admin_notes?: string;
+  quoted_at?: string;
+  item_price?: number; // for legacy backward-compatibility
+}
